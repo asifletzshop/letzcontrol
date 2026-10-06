@@ -5,6 +5,7 @@
  * Run as root (it manages system services, vhosts and MySQL).
  */
 const path = require('path');
+const fs = require('fs');
 const http = require('http');
 const express = require('express');
 const session = require('express-session');
@@ -30,6 +31,7 @@ const cron = require('./lib/cron');
 const servers = require('./lib/servers');
 const addons = require('./lib/addons');
 const settings = require('./lib/settings');
+const panelsettings = require('./lib/panelsettings');
 
 users.ensureSeedPlans();
 users.ensureAdmin();
@@ -96,6 +98,9 @@ app.use('/api/cron', requireAuth, cron.router);
 app.use('/api/servers', requireAuth, servers.router);
 app.use('/api/addons', requireAuth, addons.router);
 app.use('/api/settings', requireAuth, settings.router);
+// Panel domain / port / server clock. Admin-only inside the router too, so a
+// siteowner reaching this mount still gets 403 rather than a half-answer.
+app.use('/api/settings', requireAuth, panelsettings.router);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, name: 'letzControl' }));
 
@@ -117,7 +122,43 @@ terminal.attach(io);
 // PHP version/extension installs run apt for minutes - the default 5 min
 // requestTimeout would cut the response while apt is still working.
 server.requestTimeout = 900_000;
+
+/* A port that cannot be bound is the one failure that locks the operator out
+ * of the only tool that could fix it, so undo it here rather than waiting for
+ * the rollback watchdog. panelsettings records the working port in
+ * data/last-good-port before writing a new one; if this boot cannot bind, put
+ * that back and exit so systemd restarts us on a port that works. */
+server.on('error', (err) => {
+  if (err.code !== 'EADDRINUSE') {
+    console.error('[letzControl] server error:', err.message);
+    process.exit(1);
+  }
+  try {
+    const marker = path.join(config.dataDir, 'last-good-port');
+    const prev = Number(fs.readFileSync(marker, 'utf8').trim());
+    if (Number.isInteger(prev) && prev > 0 && prev !== config.port) {
+      const file = path.join(__dirname, 'config.json');
+      const cur = JSON.parse(fs.readFileSync(file, 'utf8'));
+      fs.writeFileSync(file, JSON.stringify({ ...cur, port: prev }, null, 2));
+      fs.rmSync(marker, { force: true });
+      console.error(
+        `[letzControl] port ${config.port} is already in use - reverted to ${prev} and restarting. `
+        + 'Pick a different port in Settings.'
+      );
+      process.exit(1); // systemd brings us straight back up on the working port
+    }
+  } catch (e) {
+    console.error('[letzControl] could not revert the port automatically:', e.message);
+  }
+  console.error(`[letzControl] port ${config.port} is already in use. Change it in config.json.`);
+  process.exit(1);
+});
+
 server.listen(config.port, config.host, () => {
+  /* A successful bind means the saved old port is obsolete. Leaving it behind
+   * would let some unrelated EADDRINUSE weeks from now silently revert the
+   * panel to a port nobody chose any more. */
+  try { fs.rmSync(path.join(config.dataDir, 'last-good-port'), { force: true }); } catch { /* fine */ }
   console.log(`[letzControl] panel listening on http://${config.host}:${config.port}`);
   if (process.getuid && process.getuid() !== 0) {
     console.warn('[letzControl] WARNING: not running as root - service/vhost/database management will fail.');

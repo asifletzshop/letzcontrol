@@ -93,6 +93,293 @@ window.SettingsView = (() => {
     );
   }
 
+  /* ------------------------ panel domain (admin) ---------------------- */
+  function domainCard(state) {
+    const domain = ui.el('input', { type: 'text', id: 'panel-domain', placeholder: 'panel.example.com' });
+    const sslBox = ui.el('input', { type: 'checkbox', id: 'panel-domain-ssl' });
+    const status = ui.el('div', { class: 'text-dim', style: 'font-size:12.5px;margin-bottom:8px' });
+    const detail = ui.el('div', { style: 'font-size:12.5px' });
+
+    let current = null;
+
+    async function load() {
+      try {
+        current = await api.get('/settings/panel');
+      } catch (e) { status.textContent = e.message; return; }
+      domain.value = current.domain || '';
+      sslBox.checked = !!current.ssl;
+
+      status.innerHTML = '';
+      detail.innerHTML = '';
+      if (!current.domain) {
+        status.appendChild(ui.el('div', {},
+          `The panel is only reachable at `, ui.el('code', {}, `http://SERVER_IP:${current.port}`),
+          `. Add a domain to reach it by name.`));
+      } else {
+        status.appendChild(ui.el('div', {},
+          current.ssl ? 'Serving at ' : 'Serving at ',
+          ui.el('code', {}, current.ssl ? `https://${current.domain}` : `http://${current.domain}`),
+          current.ssl ? ' with a valid SSL certificate.' : ' over plain HTTP.'));
+        const rows = [
+          ['Domain', current.domain],
+          ['SSL', current.ssl ? 'certificate installed and active' : 'not enabled'],
+          ['Nginx vhost', current.vhostWritten ? 'written' : 'missing'],
+          ['Points at this server', current.dnsHint || 'checked when you save'],
+          ['Firewall', current.firewall]
+        ];
+        for (const [k, v] of rows) {
+          detail.appendChild(ui.el('div', { style: 'display:flex;gap:10px;padding:4px 0;border-bottom:1px solid var(--border)' },
+            ui.el('span', { class: 'text-dim', style: 'width:170px' }, k),
+            ui.el('span', { style: 'flex:1' }, v)));
+        }
+      }
+    }
+
+    const save = ui.el('button', { class: 'btn btn-primary' }, 'Save domain');
+    save.onclick = async () => {
+      save.disabled = true;
+      const value = domain.value.trim();
+      try {
+        let r;
+        try {
+          r = await api.post('/settings/panel/domain', { domain: value, ssl: sslBox.checked });
+        } catch (e) {
+          // DNS does not point here yet: that is a normal state while the
+          // record is propagating, so offer the override rather than only
+          // refusing.
+          if ((e.body && e.body.needsForce) || /points at|no A record/.test(e.message)) {
+            if (!(await ui.confirmBox(
+              `${e.message}\n\nSave it anyway? The domain will not work until its DNS record points at this server, and no SSL certificate can be issued until then.`,
+              { okText: 'Save anyway', danger: false }))) return;
+            r = await api.post('/settings/panel/domain', { domain: value, ssl: sslBox.checked, force: true });
+          } else throw e;
+        }
+        ui.toast(`Panel domain saved: ${r.domain}`);
+        state.reload();
+      } catch (e) { ui.toast(e.message, true); }
+      save.disabled = false;
+    };
+
+    const cert = ui.el('button', { class: 'btn' }, 'Issue / renew SSL certificate');
+    cert.onclick = async () => {
+      if (!(await ui.confirmBox(
+        'Request a Let\u2019s Encrypt certificate for this panel domain?\n\nThis needs the domain to already point at this server on port 80.',
+        { okText: 'Request certificate', danger: false }))) return;
+      cert.disabled = true;
+      try {
+        const r = await api.post('/settings/panel/domain/ssl', {});
+        if (r.ok) ui.toast('Certificate installed - the panel now serves HTTPS');
+        else ui.toast('Certificate could not be issued. Open the logs for the reason.', true);
+        state.reload();
+      } catch (e) { ui.toast(e.message, true); }
+      cert.disabled = false;
+    };
+
+    const remove = ui.el('button', { class: 'btn btn-danger' }, 'Remove domain');
+    remove.onclick = async () => {
+      if (!(await ui.confirmBox(
+        'Stop serving the panel on this domain?\n\nThe panel will still be reachable at its IP and port, so you will not be locked out.',
+        { okText: 'Remove', danger: true }))) return;
+      try {
+        await api.del('/settings/panel/domain');
+        ui.toast('Panel domain removed');
+        state.reload();
+      } catch (e) { ui.toast(e.message, true); }
+    };
+
+    load();
+
+    return ui.el('div', { class: 'card' },
+      ui.el('h3', {}, 'Panel domain'),
+      ui.el('p', { class: 'text-dim', style: 'margin-top:-6px' },
+        'Serve the panel at a real hostname instead of an IP address. Point the domain\u2019s A record at this server first.'),
+      field('Domain name', domain, 'For example panel.example.com'),
+      ui.el('label', { style: 'display:flex;gap:8px;align-items:center;margin-bottom:8px' },
+        sslBox, ui.el('span', {}, 'Use SSL (issue a certificate after saving)')),
+      status,
+      ui.el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' }, save, cert, remove),
+      current ? detail : null
+    );
+  }
+
+  /* ------------------------- panel port (admin) ----------------------- */
+  function portCard(state) {
+    const port = intInput('panel-port', '', 1024, 65535);
+    const current = ui.el('div', { class: 'text-dim', style: 'font-size:12.5px;margin-bottom:8px' });
+    const detail = ui.el('div', { style: 'font-size:12.5px' });
+    let info = null;
+    let reserved = [];
+    let inUse = [];
+
+    async function load() {
+      try {
+        info = await api.get('/settings/panel');
+        port.value = info.port;
+        current.textContent = `The panel is listening on port ${info.port}.`;
+      } catch (e) { current.textContent = e.message; }
+      try {
+        const p = await api.get('/settings/panel/ports');
+        reserved = p.reserved || [];
+        inUse = p.used || [];
+        detail.innerHTML = '';
+        const say = (label, list, why) => detail.appendChild(ui.el('div',
+          { style: 'display:flex;gap:10px;padding:4px 0;border-bottom:1px solid var(--border)' },
+          ui.el('span', { class: 'text-dim', style: 'width:170px' }, label),
+          ui.el('span', { style: 'flex:1' }, list.join(', ') || 'none', why ? ui.el('div', { class: 'text-dim', style: 'font-size:11.5px' }, why) : null)));
+        say('In use now', inUse, null);
+        say('Reserved for the stack', reserved, 'The panel cannot use these - they belong to the web servers, mail or MySQL.');
+      } catch { /* the hint is optional */ }
+    }
+
+    const save = ui.el('button', { class: 'btn btn-primary' }, 'Change port');
+    save.onclick = async () => {
+      const next = Number(port.value);
+      if (!Number.isInteger(next)) return ui.toast('Enter a port number', true);
+      /* Check the same rules the server does, so an impossible port is refused
+       * straight away instead of after a confirmation the user is already
+       * imagining. The server still re-checks - this is only to save a pointless
+       * restart and a confusing dialog. */
+      if (next < 1024 || next > 65535) {
+        return ui.toast('Use a port between 1024 and 65535', true);
+      }
+      if (next === info.port) return ui.toast(`The panel is already on port ${next}`, true);
+      if (reserved.includes(next)) {
+        return ui.toast(`Port ${next} is reserved for the hosting stack (web servers, mail or MySQL)`, true);
+      }
+      if (inUse.includes(next)) return ui.toast(`Something is already listening on port ${next}`, true);
+      if (!(await ui.confirmBox(
+        `Move the panel from port ${info.port} to ${next}?\n\n`
+        + 'The panel restarts, so you will be signed out and the new address will be:\n\n'
+        + `  http://SERVER_IP:${next}\n\n`
+        + 'If anything goes wrong the panel puts the old port back by itself after about 35 seconds.',
+        { okText: `Change to ${next}` }))) return;
+      save.disabled = true;
+      try {
+        const r = await api.post('/settings/panel/port', { port: next });
+        ui.toast(`Port changed to ${r.port}. Reopen the panel at ${next}.`);
+        setTimeout(() => { location.href = `http://${location.hostname}:${next}/login.html`; }, 4000);
+      } catch (e) { ui.toast(e.message, true); save.disabled = false; }
+    };
+
+    load();
+
+    return ui.el('div', { class: 'card' },
+      ui.el('h3', {}, 'Panel port'),
+      ui.el('p', { class: 'text-dim', style: 'margin-top:-6px' },
+        'The port the panel listens on. Changing it restarts the panel and moves the firewall rule with it.'),
+      field('Listen port', port, 'Between 1024 and 65535. The old port is restored automatically if the panel does not come back.'),
+      current,
+      ui.el('div', { style: 'margin-bottom:10px' }, save),
+      detail
+    );
+  }
+
+  /* ------------------------ server time (admin) ----------------------- */
+  function timeCard(state) {
+    const zone = ui.el('select', { id: 'server-tz', size: '8', style: 'font-family:var(--mono);font-size:12.5px' });
+    const search = ui.el('input', { type: 'text', id: 'tz-search', placeholder: 'Filter, e.g. Kolkata' });
+    const status = ui.el('div', { class: 'text-dim', style: 'font-size:12.5px;margin-bottom:8px' });
+    const warn = ui.el('div', {});
+    const all = ui.el('div', {});
+
+    async function load() {
+      try {
+        const t = await api.get('/settings/time');
+        status.innerHTML = '';
+        status.appendChild(ui.el('div', {},
+          'Time zone now: ', ui.el('code', {}, t.timezone || 'unknown'),
+          t.ntpSynced ? ' · clock is synchronised' : ' · clock is NOT synchronised'));
+        status.appendChild(ui.el('div', { style: 'margin-top:2px' }, `Server time: ${t.local}`));
+
+        // timedatectl and /etc/timezone disagreeing means the recorded zone
+        // name is stale even though the clock itself is right. Say so plainly
+        // rather than hiding it.
+        if (t.etcTimezone && t.timezone && t.etcTimezone !== t.timezone) {
+          warn.innerHTML = '';
+          warn.appendChild(ui.el('div', {
+            style: 'background:var(--warn-bg,#3a2a12);border:1px solid var(--warn-border,#7a5a20);'
+              + 'border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:12.5px'
+          },
+            `The clock runs on ${t.timezone}, but /etc/timezone still says ${t.etcTimezone}. `
+            + 'Saving the time zone below corrects that file too.'));
+        } else warn.innerHTML = '';
+
+        zone.innerHTML = '';
+        for (const z of t.zoneList) {
+          zone.appendChild(ui.el('option', { value: z }, z));
+        }
+        zone.value = t.timezone || '';
+        search.oninput = () => {
+          const q = search.value.trim().toLowerCase();
+          const keep = zone.value;
+          const matches = q ? t.zoneList.filter((z) => z.toLowerCase().includes(q)) : t.zoneList;
+          zone.innerHTML = '';
+          /* Cap only a FILTERED list. Capping the unfiltered one meant clearing
+           * the box left the picker stuck showing the first 300 zones. */
+          for (const z of (q ? matches.slice(0, 300) : matches)) {
+            zone.appendChild(ui.el('option', { value: z }, z));
+          }
+          if (matches.length) {
+            zone.value = keep;
+          } else {
+            zone.appendChild(ui.el('option', { value: '' }, 'no zone matches that'));
+          }
+        };
+
+        const ntpLabel = ui.el('span', {}, `Keep the clock in sync with an NTP server (currently ${t.ntp ? 'on' : 'off'})`);
+        const ntpBtn = ui.el('button', { class: 'btn' }, t.ntp ? 'Turn NTP off' : 'Turn NTP on');
+        ntpBtn.onclick = async () => {
+          ntpBtn.disabled = true;
+          try {
+            await api.post('/settings/time/ntp', { enabled: !t.ntp });
+            ui.toast(`NTP turned ${t.ntp ? 'off' : 'on'}`);
+            state.reload();
+          } catch (e) { ui.toast(e.message, true); ntpBtn.disabled = false; }
+        };
+        all.innerHTML = '';
+        all.appendChild(ui.el('div', { style: 'display:flex;gap:10px;align-items:center;margin-top:8px' }, ntpBtn, ntpLabel));
+
+        const syncBtn = ui.el('button', { class: 'btn' }, 'Force a sync now');
+        syncBtn.onclick = async () => {
+          syncBtn.disabled = true;
+          try { await api.post('/settings/time/sync', {}); ui.toast('Sync requested'); state.reload(); }
+          catch (e) { ui.toast(e.message, true); syncBtn.disabled = false; }
+        };
+        all.appendChild(ui.el('div', { style: 'margin-top:8px;display:flex;gap:10px;align-items:center' }, syncBtn,
+          ui.el('span', { class: 'text-dim', style: 'font-size:12.5px' }, 'Step the clock to the NTP time immediately')));
+      } catch (e) { status.textContent = e.message; }
+    }
+
+    const save = ui.el('button', { class: 'btn btn-primary' }, 'Set time zone');
+    save.onclick = async () => {
+      const tz = zone.value;
+      if (!tz) return ui.toast('Pick a time zone', true);
+      if (!(await ui.confirmBox(
+        `Change the server time zone to ${tz}?\n\nThis shifts cron jobs and log timestamps on the whole server. PHP keeps its own date.timezone setting, which you change under PHP.`,
+        { okText: 'Change time zone', danger: false }))) return;
+      save.disabled = true;
+      try {
+        const r = await api.post('/settings/time', { timezone: tz });
+        ui.toast(r.note ? `Time zone set. ${r.note}` : `Time zone set to ${r.timezone}`);
+        state.reload();
+      } catch (e) { ui.toast(e.message, true); }
+      save.disabled = false;
+    };
+
+    load();
+
+    return ui.el('div', { class: 'card' },
+      ui.el('h3', {}, 'Server time'),
+      ui.el('p', { class: 'text-dim', style: 'margin-top:-6px' },
+        'The time zone the whole server runs on. Changing it shifts PHP, cron and every site on the box.'),
+      status,
+      warn,
+      field('Time zone', ui.el('div', {}, search, zone)),
+      ui.el('div', { class: 'modal-actions', style: 'justify-content:flex-start' }, save),
+      all
+    );
+  }
+
   /* ------------------------- panel config (admin) --------------------- */
   function configCard(data, isAdmin) {
     const c = data.config || {};
@@ -300,7 +587,12 @@ window.SettingsView = (() => {
 
     root.appendChild(accountCard(me, state));
     root.appendChild(prefsCard(data));
-    if (isAdmin) root.appendChild(configCard(data, isAdmin));
+    if (isAdmin) {
+      root.appendChild(domainCard(state));
+      root.appendChild(portCard(state));
+      root.appendChild(timeCard(state));
+      root.appendChild(configCard(data, isAdmin));
+    }
     root.appendChild(maintenanceCard(state, isAdmin));
     root.appendChild(sessionsCard(me));
     if (isAdmin) root.appendChild(systemCard());
