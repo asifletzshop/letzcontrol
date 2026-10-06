@@ -150,6 +150,27 @@ kbd {
 .grid.cols-4 { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 .grid.cols-2 { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
 
+/* ---------- customer dashboard ---------- */
+/* The greeting panel for a hosting customer. Deliberately unlike the admin
+   dashboard: warmer, no host metrics, and the plan named up front. */
+.user-hero {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 20px 22px; border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(900px 220px at 8% -40%, rgba(52, 211, 153, .10), transparent 70%),
+    linear-gradient(180deg, rgba(255, 255, 255, .025), rgba(255, 255, 255, 0) 42%),
+    var(--bg-card);
+  box-shadow: var(--shadow-1);
+}
+.user-hero-hi {
+  font-size: 21px; font-weight: 650; letter-spacing: -.01em; line-height: 1.2;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@media (max-width: 560px) {
+  .user-hero-hi { font-size: 18px; white-space: normal; }
+}
+
 /* ---------- dashboard movable blocks ---------- */
 /* Each dashboard section is a wrapper so the whole layout can be reordered
    without touching what is inside it. Position relative anchors the grip. */

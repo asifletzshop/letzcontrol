@@ -10,7 +10,8 @@
   }
 
   const NAV = [
-    { id: 'dashboard', icon: '📊', label: 'Dashboard', group: 'Overview', sub: 'Live server metrics, services and quick actions', view: DashboardView },
+    { id: 'dashboard', icon: '📊', label: 'Dashboard', group: 'Overview', sub: 'Live server metrics, services and quick actions', view: DashboardView, hideForNonAdmin: true },
+    { id: 'mydashboard', icon: '🏠', label: 'My hosting', group: 'Overview', sub: 'Your plan, websites and databases', view: UserDashboardView, hideForAdmin: true },
     { id: 'sites', icon: '🌐', label: 'Websites', group: 'Hosting', sub: 'Create and manage sites, backends and SSL', view: SitesView },
     { id: 'dns', icon: '🛰️', label: 'DNS', group: 'Hosting', sub: 'Zone records per website', view: DnsView },
     { id: 'wordpress', icon: '🧭', label: 'WordPress', group: 'Hosting', sub: 'Installations, updates and core integrity', view: WordpressView },
@@ -64,9 +65,25 @@
 
   const visibleNav = () => NAV.filter((n) => {
     if (n.admin && me.role !== 'admin') return false;
+    /* Exactly one dashboard per audience: the machine one is the admin's, the
+     * customer's is built from their own sites and databases. */
+    if (n.hideForAdmin && me.role === 'admin') return false;
+    if (n.hideForNonAdmin && me.role !== 'admin') return false;
     if (n.id === 'setup' && setupComplete) return false;
     return true;
   });
+
+  /* Two dashboards, one per audience. An admin opening "/" gets the machine -
+   * CPU, memory, services. A customer must not, so they land on a page built
+   * only from their own sites, databases and plan. Route "/" and an explicit
+   * request for the machine dashboard to the right one rather than rendering
+   * the admin view and relying on the fields being hidden in CSS. */
+  function dashboardRoute(id) {
+    if (id === 'dashboard' || id === 'mydashboard') {
+      return me.role === 'admin' ? 'dashboard' : 'mydashboard';
+    }
+    return id;
+  }
 
   /** Push the current state onto the Settings → System restore button. Kept
    *  separate from the check because that button is rendered by a view that
@@ -105,7 +122,7 @@
         lastGroup = item.group;
         navEl.appendChild(ui.el('div', { class: 'nav-group-title' }, item.group));
       }
-      const el = ui.el('div', { class: 'nav-item' + (item.id === currentRoute() ? ' active' : '') },
+      const el = ui.el('div', { class: 'nav-item' + (item.id === dashboardRoute(currentRoute()) ? ' active' : '') },
         ui.el('span', { class: 'ico' }, item.icon),
         ui.el('span', { class: 'label' }, item.label)
       );
@@ -117,7 +134,7 @@
   const currentRoute = () => (location.hash.replace(/^#\//, '').split('?')[0] || 'dashboard');
 
   async function route() {
-    const id = currentRoute();
+    const id = dashboardRoute(currentRoute());
     const item = NAV.find((n) => n.id === id) || NAV[0];
     if (item.admin && me.role !== 'admin') { location.hash = '#/dashboard'; return; }
     if (activeView && activeView.destroy) { try { activeView.destroy(); } catch { /* noop */ } }
