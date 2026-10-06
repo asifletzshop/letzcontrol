@@ -149,6 +149,41 @@ kbd {
 .grid { display: grid; gap: 16px; }
 .grid.cols-4 { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 .grid.cols-2 { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
+
+/* ---------- dashboard movable blocks ---------- */
+/* Each dashboard section is a wrapper so the whole layout can be reordered
+   without touching what is inside it. Position relative anchors the grip. */
+.dash-block { position: relative; margin-bottom: 16px; }
+.dash-block:last-child { margin-bottom: 0; }
+
+/* Only the grip is draggable. The blocks hold charts, buttons and tables, so
+   making the block itself draggable meant a click on a chart or a quick action
+   started a reorder instead of doing what it was clicked for. */
+.dash-grip {
+  position: absolute; top: 8px; right: 10px; z-index: 5;
+  cursor: grab; user-select: none;
+  color: var(--text-dim); opacity: .45;
+  font-size: 15px; line-height: 1; padding: 4px 5px; border-radius: 5px;
+  transition: opacity .15s, background .15s;
+}
+.dash-grip:hover { opacity: 1; background: rgba(255, 255, 255, .06); }
+.dash-grip:active { cursor: grabbing; }
+.dash-block:hover > .dash-grip { opacity: .8; }
+
+/* Heading room so the grip never sits on top of a card title. */
+.dash-block > .card > h3:first-child { padding-right: 22px; }
+
+.dash-block.dragging { opacity: .35; }
+.dash-block.drop-before { box-shadow: 0 -3px 0 0 var(--accent, #34d399); }
+.dash-block.drop-after { box-shadow: 0 3px 0 0 var(--accent, #34d399); }
+
+.dash-layout-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 14px 0 4px; padding: 8px 12px;
+  border: 1px dashed var(--border); border-radius: var(--radius);
+  font-size: 12.5px;
+}
+
 .card {
   background: linear-gradient(180deg, rgba(255, 255, 255, .025), rgba(255, 255, 255, 0) 42%), var(--bg-card);
   border: 1px solid var(--border);

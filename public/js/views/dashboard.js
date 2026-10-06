@@ -64,68 +64,155 @@ window.DashboardView = (() => {
     { label: 'Setup Wizard', icon: '🧩', hash: '#/setup', admin: true }
   ];
 
-  /* key services we want health pills for, mapped to friendly names */
-  const KEY_SERVICES = [
-    ['nginx', 'Nginx'], ['openlitespeed', 'OpenLiteSpeed'], ['lsws', 'OpenLiteSpeed'], ['lshttpd', 'OpenLiteSpeed'],
-    ['mariadb', 'MariaDB'], ['mysql', 'MySQL'], ['postfix', 'Postfix'], ['dovecot', 'Dovecot'],
-    ['redis', 'Redis'], ['docker', 'Docker'], ['cron', 'Cron'], ['letzcontrol', 'letzControl'],
-    ['php', 'PHP-FPM'], ['phpmyadmin', 'phpMyAdmin']
+  /* The six services that matter most for a running site: the web server, the
+   * PHP it executes, the database behind it and the mail path. The full list
+   * lives on the Services page - the dashboard stays a glance, not an
+   * inventory. */
+  const DASHBOARD_SERVICES = [
+    'Nginx', 'OpenLiteSpeed', 'MariaDB', 'PHP-FPM', 'Postfix', 'Dovecot'
   ];
+  const DASHBOARD_SERVICE_COUNT = 6;
 
   const fmtSwap = (d) => (!d || !d.swapTotal
     ? 'none'
     : `${ui.fmtBytes(d.swapUsed)} / ${ui.fmtBytes(d.swapTotal)} (${Math.round((d.swapUsed / d.swapTotal) * 100)}%)`);
 
-  /* Key services table: status + start/stop/restart/autostart for admins,
-   * read-only for everyone else; missing servers link to their installer. */
+  /* Key services table: name and state only, capped at six. This is a
+   * dashboard glance - stopping a service belongs on the Services page, where
+   * there is room for the unit name, autostart state and confirmation. Keeping
+   * the buttons here meant a stray click on a live dashboard could take the
+   * web server down with no confirmation in between. */
   function renderKey(box, rows, me) {
     if (!box) return;
-    const admin = me.role === 'admin';
     box.innerHTML = '';
-    const body = ui.el('tbody', {});
-    for (const s of rows) {
-      const actions = ui.el('td', {});
-      if (!s.found) {
-        if (admin) {
-          const target = ['Nginx', 'Apache', 'OpenLiteSpeed'].includes(s.name) ? '#/servers'
-            : (s.name === 'MariaDB' || s.name === 'PHP-FPM') ? '#/setup' : '#/addons';
-          const b = ui.el('button', { class: 'btn btn-sm' }, '⬇ Install');
-          b.onclick = () => { location.hash = target; };
-          actions.appendChild(b);
-        } else actions.textContent = '—';
-      } else if (admin) {
-        const doAct = async (action) => {
-          try {
-            const r = await api.post(`/services/${encodeURIComponent(s.unit)}/action`, { action });
-            ui.toast(r.ok ? `${s.name}: ${action} ✓` : (r.output || 'failed'), !r.ok);
-          } catch (e) { ui.toast(e.message, true); }
-          try {
-            const fresh = await api.get('/services/key');
-            renderKey(box, fresh.services || [], me);
-          } catch { /* keep current rows */ }
-        };
-        const mk = (label, title, action) => {
-          const b = ui.el('button', { class: 'btn btn-sm', title }, label);
-          b.onclick = () => doAct(action);
-          actions.append(b, ' ');
-        };
-        if (s.active) { mk('⏸', 'Stop', 'stop'); mk('↻', 'Restart', 'restart'); }
-        else mk('▶', 'Start', 'start');
-        mk(s.enabled ? '⏻ Disable' : '⏻ Enable', s.enabled ? 'Disable autostart' : 'Enable autostart', s.enabled ? 'disable' : 'enable');
-      } else actions.textContent = '—';
 
+    const picked = [];
+    for (const name of DASHBOARD_SERVICES) {
+      const hit = rows.find((r) => r.name === name);
+      if (hit) picked.push(hit);
+    }
+    /* If fewer than the cap are installed, top up from whatever else is
+     * running so the card is not half empty on a minimal box. */
+    for (const r of rows) {
+      if (picked.length >= DASHBOARD_SERVICE_COUNT) break;
+      if (r.found && !picked.includes(r)) picked.push(r);
+    }
+    const shown = picked.slice(0, DASHBOARD_SERVICE_COUNT);
+
+    if (!shown.length) {
+      box.appendChild(ui.el('span', { class: 'text-dim' }, 'No services found'));
+      return;
+    }
+
+    const body = ui.el('tbody', {});
+    for (const s of shown) {
       body.appendChild(ui.el('tr', {},
-        ui.el('td', { title: s.desc || '' }, s.found ? s.name : ui.el('span', { class: 'text-dim' }, s.name)),
-        ui.el('td', {}, s.found ? ui.badge(s.active ? 'running' : s.state, s.active ? 'green' : 'red') : ui.badge('not installed', 'gray')),
-        ui.el('td', {}, s.found ? ui.badge(s.enabled ? 'enabled' : s.enabledState, s.enabled ? 'green' : 'gray') : ''),
-        actions));
+        ui.el('td', { title: s.desc || (s.found ? s.unit : 'not installed') },
+          s.found ? s.name : ui.el('span', { class: 'text-dim' }, s.name)),
+        ui.el('td', {},
+          s.found ? ui.badge(s.active ? 'running' : s.state, s.active ? 'green' : 'red')
+            : ui.badge('not installed', 'gray'))));
     }
     box.appendChild(ui.el('div', { class: 'table-wrap' },
       ui.el('table', {},
         ui.el('thead', {}, ui.el('tr', {},
-          ui.el('th', {}, 'Service'), ui.el('th', {}, 'State'),
-          ui.el('th', {}, 'Startup'), ui.el('th', {}, 'Actions'))),
+          ui.el('th', {}, 'Service'), ui.el('th', {}, 'State'))),
         body)));
+  }
+
+  /* --------------------- movable layout (per user) ------------------- */
+  /* Each block is a wrapper carrying data-block. The saved order is per
+   * account, so two people can arrange the dashboard differently and neither
+   * inherits the other's layout. Blocks the browser does not know about (an
+   * older stored order, or a block added in a later release) are ignored
+   * rather than rendered empty. */
+  const DEFAULT_ORDER = ['stats', 'quick', 'charts', 'services', 'system'];
+
+  function block(id, node) {
+    const w = ui.el('div', { 'data-block': id, class: 'dash-block' });
+    w.appendChild(node);
+    return w;
+  }
+
+  /* A drag grip in each block's corner. Only the grip starts a drag: the
+   * blocks contain charts, buttons and tables, and making the whole block
+   * draggable meant a click on a chart or a quick action began a reorder
+   * instead of doing its job. */
+  function addGrip(w, label) {
+    const grip = ui.el('span', {
+      class: 'dash-grip',
+      draggable: 'true',
+      title: `Drag to move "${label}" - the order is saved to your account`,
+      'aria-label': `Move ${label}`
+    }, '⠿');
+    w.appendChild(grip);
+    return grip;
+  }
+
+  function applyOrder(container, order) {
+    const blocks = [...container.querySelectorAll(':scope > [data-block]')];
+    if (!blocks.length) return;
+    /* Known ids in the saved order first, then anything new appended after,
+     * so adding a block in a future release does not hide it. */
+    const byId = new Map(blocks.map((b) => [b.dataset.block, b]));
+    const seq = [];
+    for (const id of (Array.isArray(order) ? order : [])) {
+      if (byId.has(id)) { seq.push(byId.get(id)); byId.delete(id); }
+    }
+    for (const b of blocks) if (byId.has(b.dataset.block)) seq.push(b);
+    for (const b of seq) container.appendChild(b);
+  }
+
+  function currentOrder(container) {
+    return [...container.querySelectorAll(':scope > [data-block]')].map((b) => b.dataset.block);
+  }
+
+  function enableDrag(container, onSaved) {
+    let dragged = null;
+
+    container.addEventListener('dragstart', (e) => {
+      const grip = e.target.closest('.dash-grip');
+      if (!grip) return;                       // only a grip drags
+      dragged = grip.closest('[data-block]');
+      if (!dragged) return;
+      dragged.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      // Firefox refuses to start a drag without payload.
+      try { e.dataTransfer.setData('text/plain', dragged.dataset.block); } catch { /* older browsers */ }
+    });
+
+    container.addEventListener('dragend', () => {
+      if (!dragged) return;
+      dragged.classList.remove('dragging');
+      container.querySelectorAll('.drop-before, .drop-after').forEach((n) => n.classList.remove('drop-before', 'drop-after'));
+      dragged = null;
+      const order = currentOrder(container);
+      onSaved(order);
+    });
+
+    container.addEventListener('dragover', (e) => {
+      if (!dragged) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const over = e.target.closest('[data-block]');
+      container.querySelectorAll('.drop-before, .drop-after').forEach((n) => n.classList.remove('drop-before', 'drop-after'));
+      if (!over || over === dragged || !container.contains(over)) return;
+      const box = over.getBoundingClientRect();
+      // Above or below the midpoint decides which half we drop onto.
+      const after = (e.clientY - box.top) > box.height / 2;
+      over.classList.add(after ? 'drop-after' : 'drop-before');
+    });
+
+    container.addEventListener('drop', (e) => {
+      if (!dragged) return;
+      e.preventDefault();
+      const over = e.target.closest('[data-block]');
+      container.querySelectorAll('.drop-before, .drop-after').forEach((n) => n.classList.remove('drop-before', 'drop-after'));
+      if (!over || over === dragged) return;
+      const box = over.getBoundingClientRect();
+      const after = (e.clientY - box.top) > box.height / 2;
+      if (after) over.after(dragged); else over.before(dragged);
+    });
   }
 
   async function render(root, me) {
@@ -148,11 +235,11 @@ window.DashboardView = (() => {
       b.onclick = () => { location.hash = a.hash; };
       actions.appendChild(b);
     }
-    const actionsCard = ui.el('div', { class: 'card', style: 'margin-top:16px' },
+    const actionsCard = ui.el('div', { class: 'card' },
       ui.el('h3', {}, 'Quick actions'), actions);
 
     /* ---------- charts ---------- */
-    const charts = ui.el('div', { class: 'grid cols-2', style: 'margin-top:16px' },
+    const charts = ui.el('div', { class: 'grid cols-2' },
       ui.el('div', { class: 'card' }, ui.el('h3', {}, 'CPU % (live)'), ui.el('div', { class: 'chart-box' }, ui.el('canvas', { id: 'cpuChart' }))),
       ui.el('div', { class: 'card' }, ui.el('h3', {}, 'Memory % (live)'), ui.el('div', { class: 'chart-box' }, ui.el('canvas', { id: 'ramChart' })))
     );
@@ -186,18 +273,61 @@ window.DashboardView = (() => {
       ui.el('div', { class: 'health-strip', id: 'healthStrip' }, ui.el('span', { class: 'health-pill' }, 'Checking…'))
     );
 
-    const keyCard = ui.el('div', { class: 'card', style: 'margin-top:16px' },
+    const keyCard = ui.el('div', { class: 'card' },
       ui.el('h3', {}, 'Key services'),
+      ui.el('p', { class: 'text-dim', style: 'margin:-4px 0 10px;font-size:12px' },
+        'The six that matter most. Manage all of them under Services.'),
       ui.el('div', { id: 'keySvcBox' }, ui.el('span', { class: 'text-dim' }, 'Checking…')));
 
-    root.append(
-      cards, actionsCard, charts, keyCard,
-      ui.el('div', { class: 'grid cols-2', style: 'margin-top:16px' }, sysCard, stackCard)
+    const layout = ui.el('div', { id: 'dashLayout' });
+
+    const reset = ui.el('button', { class: 'btn btn-sm', title: 'Put the blocks back in their default order' }, '↺ Reset layout');
+    reset.onclick = async () => {
+      try {
+        await api.put('/settings/prefs', { dashboardOrder: [] });
+        applyOrder(layout, DEFAULT_ORDER);
+        ui.toast('Dashboard layout reset');
+      } catch (e) { ui.toast(e.message, true); }
+    };
+
+    const layoutBar = ui.el('div', {
+      class: 'dash-layout-bar',
+      title: 'This layout belongs to your account only'
+    },
+      ui.el('span', { class: 'text-dim', style: 'flex:1' },
+        'Drag the ⠿ handle on any block to rearrange your dashboard'),
+      reset);
+
+    layout.append(
+      block('stats', cards),
+      block('quick', actionsCard),
+      block('charts', charts),
+      block('services', keyCard),
+      block('system', ui.el('div', { class: 'grid cols-2' }, sysCard, stackCard))
     );
 
-    /* Update notice, above everything else so it is the first thing seen. */
+    root.append(layout, layoutBar);
+
+    /* Give every block a grip, then restore this account's saved order. */
+    const LABELS = { stats: 'Server stats', quick: 'Quick actions', charts: 'Live charts', services: 'Key services', system: 'System and hosting' };
+    for (const w of layout.querySelectorAll(':scope > [data-block]')) {
+      addGrip(w, LABELS[w.dataset.block] || w.dataset.block);
+    }
+    enableDrag(layout, async (order) => {
+      try {
+        await api.put('/settings/prefs', { dashboardOrder: order });
+        ui.toast('Dashboard layout saved to your account');
+      } catch (e) { ui.toast('Could not save the layout: ' + e.message, true); }
+    });
+    try {
+      const prefs = await api.get('/settings');
+      applyOrder(layout, (prefs.prefs && prefs.prefs.dashboardOrder) || DEFAULT_ORDER);
+    } catch { applyOrder(layout, DEFAULT_ORDER); }
+
+    /* Update notice, pinned above the rearrangeable area so a pending update
+     * cannot be dragged out of sight. */
     if (window.UpdatesView) {
-      UpdatesView.banner(me).then((b) => { if (b) root.insertBefore(b, root.firstChild); });
+      UpdatesView.banner(me).then((b) => { if (b) root.insertBefore(b, layout); });
     }
 
     cpuChart = makeChart(el('cpuChart'), 'CPU %', '#34d399');
@@ -251,13 +381,19 @@ window.DashboardView = (() => {
         if (!strip) return;
         strip.innerHTML = '';
         const all = svc.value.services || [];
-        const seen = new Set();
         let shown = 0;
-        for (const [key, name] of KEY_SERVICES) {
-          const unit = all.find((u) => u.unit.replace(/\.service$/, '') === key || (key === 'php' && /^php[\d.]*-fpm$/.test(u.unit.replace(/\.service$/, ''))));
+        /* Health pills use the same six services as the Key services table, so
+         * the two never disagree about what the dashboard considers important. */
+        for (const name of DASHBOARD_SERVICES) {
+          const unit = all.find((u) => {
+            const base = u.unit.replace(/\.service$/, '');
+            if (name === 'MariaDB') return base === 'mariadb' || base === 'mysql';
+            if (name === 'PHP-FPM') return /^php[\d.]*-fpm$/.test(base);
+            if (name === 'OpenLiteSpeed') return base === 'lshttpd' || base === 'lsws' || base === 'openlitespeed';
+            if (name === 'Redis') return base === 'redis' || base === 'redis-server';
+            return base === name.toLowerCase();
+          });
           if (!unit) continue;
-          if (seen.has(name)) continue;
-          seen.add(name);
           shown++;
           const running = unit.active === 'active';
           strip.appendChild(ui.el('span', { class: 'health-pill ' + (running ? 'ok' : 'bad'), title: unit.unit },
