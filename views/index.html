@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>letzControl</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%2334d399'/><text x='50' y='72' font-size='58' text-anchor='middle'>⚡</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/style.css">
+<link rel="stylesheet" href="/css/upload.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.8.1/dist/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><span class="brand-logo">&#9889;</span><span>letz<span class="brand-accent">Control</span></span></div>
+    <nav id="nav"></nav>
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <span class="avatar" id="userAvatar"></span>
+        <div class="user-meta"><span id="currentUser"></span><span class="user-role" id="userRole"></span></div>
+      </div>
+      <button id="logoutBtn" class="btn btn-ghost btn-sm" title="Log out">&#128268;</button>
+    </div>
+  </aside>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+  <main class="main">
+    <header class="topbar">
+      <button class="btn btn-ghost hamburger" id="menuBtn" aria-label="Menu">&#9776;</button>
+      <div class="topbar-title"><h1 id="pageTitle"></h1><div class="topbar-sub" id="pageSub"></div></div>
+      <div class="spacer"></div>
+      <button class="search-trigger" id="searchBtn" title="Search pages, sites and databases (Ctrl+K)">
+        <span>&#8981;</span><span class="st-label">Search…</span><kbd>Ctrl K</kbd>
+      </button>
+    </header>
+    <section id="content" class="content"></section>
+  </main>
+</div>
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+
+<script src="/js/api.js"></script>
+<script src="/js/upload.js"></script>
+<script src="/js/ui.js"></script>
+<script src="/js/views/dashboard.js"></script>
+<script src="/js/views/setup.js"></script>
+<script src="/js/views/sites.js"></script>
+<script src="/js/views/dns.js"></script>
+<script src="/js/views/wordpress.js"></script>
+<script src="/js/views/mail.js"></script>
+<script src="/js/views/databases.js"></script>
+<script src="/js/views/php.js"></script>
+<script src="/js/views/docker.js"></script>
+<script src="/js/views/services.js"></script>
+<script src="/js/views/servers.js"></script>
+<script src="/js/views/files.js"></script>
+<script src="/js/views/cron.js"></script>
+<script src="/js/views/addons.js"></script>
+<script src="/js/views/terminal.js"></script>
+<script src="/js/views/users.js"></script>
+<script src="/js/views/settings.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Secrets and per-install state - NEVER commit these.
+# config.json holds sessionSecret (anyone with it can forge a session cookie)
+# and the MySQL credentials; data/ holds the site/user/database records and the
+# generated ADMIN_CREDENTIALS.txt with the first admin password.
+config.json
+config.local.json
+.env
+.env.*
+!.env.example
+data/
+exports/
+*.pem
+*.key
+*.crt
+
+# Panel logs
+*.log
+npm-debug.log*
+
+# Panel data backups written by the installer
+letzcontrol-db-*.json
+*.before-import
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/

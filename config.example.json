@@ -1,0 +1,33 @@
+{
+  "_comment": "Copy to config.json and adjust. Never commit config.json - it holds the session secret and DB credentials.",
+
+  "port": 2087,
+  "host": "0.0.0.0",
+
+  "sessionSecret": "generated-automatically-on-first-run",
+
+  "dataDir": "/opt/letzcontrol/data",
+  "sitesRoot": "/var/www",
+
+  "ports": {
+    "apache": 8080,
+    "openlitespeed": 8088,
+    "node": 3001
+  },
+
+  "nginx": { "confDir": "/etc/nginx" },
+  "apache": { "confDir": "/etc/apache2" },
+  "openlitespeed": { "root": "/usr/local/lsws" },
+
+  "mysql": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "user": "root",
+    "password": "",
+    "socketPath": ""
+  },
+
+  "certbotEmail": "",
+  "publicIp": "",
+  "fileManagerRoots": ["/"]
+}
