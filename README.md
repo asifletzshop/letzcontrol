@@ -97,7 +97,7 @@ Your sites, mailboxes, databases, users and admin password are preserved.
 | 🧱 | **Addons** | Redis, Varnish, webmail, mail, antivirus, certbot, Docker, cron, Node.js, Perl, FTP, phpMyAdmin, BIND9 |
 | 💻 | **Terminal** | Full web terminal (xterm.js + node-pty) |
 | 👥 | **Users & Plans** | Hosting users with plan limits on sites/databases |
-| 🔧 | **Settings** | Panel config, data backup/restore, active sessions, system info |
+| 🔧 | **Settings** | Panel domain + SSL, panel port, server timezone, panel config, data backup/restore, active sessions, system info |
 | 🧩 | **Setup Wizard** | Detects what is installed and one-click installs the rest |
 
 ---
@@ -147,19 +147,59 @@ installs only what is missing, with live output:
 
 ## ⚙️ Configuration
 
-`config.json` is created on first run (see `config.example.json`). Every value
+`config.json` is created on first run (see `config.example.json`). Most values
 can also be changed from **Settings → Panel configuration** without editing
 files.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `port` / `host` | `2087` / `0.0.0.0` | Panel bind address |
+| `port` / `host` | `2087` / `0.0.0.0` | Panel bind address — change it in Settings, not here |
 | `sitesRoot` | `/var/www` | Docroots: `<sitesRoot>/<domain>/public` |
 | `ports.apache` / `ports.openlitespeed` | `8080` / `8088` | Backend ports so all servers coexist |
 | `mysql.*` | root @ `127.0.0.1` | Root DB credentials for the database manager |
 | `certbotEmail` | `""` | Let's Encrypt contact address |
 | `fileManagerRoots` | `["/"]` | Paths the file manager may browse |
 | `sessionSecret` | auto-generated | Signs session cookies — never commit it |
+
+---
+
+## 🔗 Panel address, port and clock
+
+Three settings that change how the panel itself is reached.
+
+### Panel domain
+
+**Settings → Panel domain** points a real hostname at the panel. The panel
+writes an Nginx vhost (`/etc/nginx/sites-enabled/letzcontrol-panel.conf`) that
+proxies to the panel port, and can issue a Let's Encrypt certificate for it.
+
+Point the domain's **A record at this server first** — the panel checks, and
+tells you when it does not resolve here yet. It refuses a name that is already
+a website in the panel, so the Websites module can never overwrite it. SSL
+needs port 80 reachable and the record in place.
+
+### Panel port
+
+**Settings → Panel port** moves the panel to another port and moves the
+firewall rule with it. Ports belonging to the hosting stack (80, 443, 8080,
+8088, 3001, 2088, 2089, 3306 and the mail ports) are refused.
+
+Changing the port restarts the panel, and a port that cannot be bound would
+otherwise lock you out of the only tool that could fix it. So there are two
+independent recoveries, both automatic:
+
+- the panel records the working port before the change, and puts it straight
+  back if the bind fails
+- a `systemd-run` watchdog restores it if the process never gets far enough to
+  notice
+
+The vhost from **Panel domain** is rewritten to follow the new port.
+
+### Server time
+
+**Settings → Server time** sets the system timezone from the OS zone list, and
+has switches for NTP and an immediate re-sync. Note that PHP keeps its own
+`date.timezone`, which you change under **PHP**, not here.
 
 ---
 
