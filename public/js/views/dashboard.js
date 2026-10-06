@@ -195,6 +195,11 @@ window.DashboardView = (() => {
       ui.el('div', { class: 'grid cols-2', style: 'margin-top:16px' }, sysCard, stackCard)
     );
 
+    /* Update notice, above everything else so it is the first thing seen. */
+    if (window.UpdatesView) {
+      UpdatesView.banner(me).then((b) => { if (b) root.insertBefore(b, root.firstChild); });
+    }
+
     cpuChart = makeChart(el('cpuChart'), 'CPU %', '#34d399');
     ramChart = makeChart(el('ramChart'), 'RAM %', '#22d3ee');
 

@@ -1,6 +1,6 @@
 {
   "name": "letzcontrol",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "letzControl - lightweight VPS & web hosting control panel (websites, databases, PHP, Docker, services, files, terminal, users & plans)",
   "main": "server.js",
   "scripts": {

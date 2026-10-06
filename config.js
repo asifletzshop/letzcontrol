@@ -53,7 +53,11 @@ const defaults = {
   publicIp: '',
 
   // Directories the file manager is allowed to touch
-  fileManagerRoots: ['/']
+  fileManagerRoots: ['/'],
+
+  // Where in-place panel updates are fetched from (owner/name). Point this at
+  // your own fork if you are not running asifletzshop/letzcontrol.
+  githubRepo: 'asifletzshop/letzcontrol'
 };
 
 let config;

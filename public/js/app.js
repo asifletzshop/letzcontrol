@@ -26,7 +26,8 @@
     { id: 'terminal', icon: '💻', label: 'Terminal', group: 'Server', sub: 'Web shell session', view: TerminalView, admin: true },
     { id: 'setup', icon: '🧩', label: 'Setup Wizard', group: 'Advanced', sub: 'Guided installation of the hosting stack', view: SetupView, admin: true },
     { id: 'users', icon: '👥', label: 'Users & Plans', group: 'Advanced', sub: 'Panel accounts, roles and quotas', view: UsersView, admin: true },
-    { id: 'settings', icon: '🔧', label: 'Settings', group: 'Advanced', sub: 'Panel preferences and maintenance', view: SettingsView }
+    { id: 'settings', icon: '🔧', label: 'Settings', group: 'Advanced', sub: 'Panel preferences and maintenance', view: SettingsView },
+    { id: 'updates', icon: '⬆️', label: 'Updates', group: 'Advanced', sub: 'Check for and install panel updates', view: UpdatesView, admin: true }
   ];
 
   const navEl = document.getElementById('nav');

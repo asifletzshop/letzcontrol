@@ -32,6 +32,7 @@ const servers = require('./lib/servers');
 const addons = require('./lib/addons');
 const settings = require('./lib/settings');
 const panelsettings = require('./lib/panelsettings');
+const updates = require('./lib/updates');
 
 users.ensureSeedPlans();
 users.ensureAdmin();
@@ -101,6 +102,7 @@ app.use('/api/settings', requireAuth, settings.router);
 // Panel domain / port / server clock. Admin-only inside the router too, so a
 // siteowner reaching this mount still gets 403 rather than a half-answer.
 app.use('/api/settings', requireAuth, panelsettings.router);
+app.use('/api/updates', requireAuth, updates.router);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, name: 'letzControl' }));
 
