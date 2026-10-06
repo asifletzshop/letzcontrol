@@ -9,14 +9,14 @@ dashboard. Installs with a single command.
 [![node](https://img.shields.io/badge/node-%3E%3D18-339933)](https://nodejs.org)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Debian%2FUbuntu-lightgrey)](https://www.debian.org)
-[![stars](https://img.shields.io/github/stars/asif-letz/letzcontrol?style=social)](https://github.com/asif-letz/letzcontrol/stargazers)
+[![stars](https://img.shields.io/github/stars/asifletzshop/letzcontrol?style=social)](https://github.com/asifletzshop/letzcontrol/stargazers)
 
 ---
 
 ## 🚀 Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/asif-letz/letzcontrol/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/asifletzshop/letzcontrol/main/install.sh | sudo bash
 ```
 
 That is the whole install. It detects your OS, installs Node.js if needed, sets
@@ -41,7 +41,7 @@ bash install.sh --help      # all options
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `GITHUB_REPO` | `asif-letz/letzcontrol` | repo to install from |
+| `GITHUB_REPO` | `asifletzshop/letzcontrol` | repo to install from |
 | `PANEL_VERSION` | `latest` | tag or branch |
 | `INSTALL_DIR` | `/opt/letzcontrol` | where the panel lives |
 | `PANEL_PORT` | `2087` | panel listen port |
@@ -52,7 +52,7 @@ bash install.sh --help      # all options
 <summary>Manual installation</summary>
 
 ```bash
-git clone https://github.com/asif-letz/letzcontrol.git /opt/letzcontrol
+git clone https://github.com/asifletzshop/letzcontrol.git /opt/letzcontrol
 cd /opt/letzcontrol
 apt update && apt install -y build-essential python3
 npm install --omit=dev

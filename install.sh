@@ -21,7 +21,7 @@ PANEL_PORT="${PANEL_PORT:-2087}"
 SERVICE_NAME="letzcontrol"
 # Where the code lives. Both default to this repo; override to install a fork
 # (e.g. REPO_URL=https://github.com/you/letzcontrol.git bash install.sh).
-GITHUB_REPO="${GITHUB_REPO:-asif-letz/letzcontrol}"
+GITHUB_REPO="${GITHUB_REPO:-asifletzshop/letzcontrol}"
 REPO_URL="${REPO_URL:-https://github.com/${GITHUB_REPO}.git}"
 TARBALL_URL="${TARBALL_URL:-https://github.com/${GITHUB_REPO}/archive/refs/heads/main.tar.gz}"
 DO_SERVICE=1
@@ -56,7 +56,7 @@ Environment
   PANEL_VERSION      tag/branch to install        (default latest)
   INSTALL_DIR        install location             (default /opt/letzcontrol)
   PANEL_PORT         panel port                   (default 2087)
-  GITHUB_REPO        owner/name of the repo       (default asif-letz/letzcontrol)
+  GITHUB_REPO        owner/name of the repo       (default asifletzshop/letzcontrol)
   REPO_URL           full git URL        (default derived from GITHUB_REPO)
   TARBALL_URL        tarball URL fallback (default derived from GITHUB_REPO)
 
