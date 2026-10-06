@@ -1,127 +1,66 @@
 # ⚡ letzControl
 
-A lightweight VPS & web-hosting control panel built with Node.js + Express.
+**A self-hosted VPS & web-hosting control panel for Debian/Ubuntu.**
 
-![stack](https://img.shields.io/badge/node-%3E%3D18-339933) ![license](https://img.shields.io/badge/license-MIT-blue)
+Run **Nginx, Apache and OpenLiteSpeed at the same time**, and manage websites,
+SSL, databases, PHP, mail, DNS, Docker, cron, files and hosting users from one
+dashboard. Installs with a single command.
 
-## Features
+[![node](https://img.shields.io/badge/node-%3E%3D18-339933)](https://nodejs.org)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![platform](https://img.shields.io/badge/platform-Debian%2FUbuntu-lightgrey)](https://www.debian.org)
+[![stars](https://img.shields.io/github/stars/asif-letz/letzcontrol?style=social)](https://github.com/asif-letz/letzcontrol/stargazers)
 
-| Module | What it does |
-|---|---|
-| 📊 Dashboard | Live CPU / RAM / disk / network stats with charts (Socket.IO push) |
-| 🌐 Websites | Virtual hosts on **Nginx, Apache and OpenLiteSpeed — all running at the same time**, per-site PHP version, one-click Let's Encrypt SSL |
-| 🗄️ Databases | Create/drop MySQL/MariaDB databases + users (cPanel-style `user_` prefixes) |
-| 🐘 PHP | Detects all installed PHP-FPM versions, view extensions, restart FPM, switch default CLI |
-| 🐳 Docker | Containers & images: start/stop/restart/logs/remove |
-| ⚙️ Services | Full systemd service control |
-| 📁 Files | Browser-based file manager with editor & uploads |
-| 💻 Terminal | Full web terminal (xterm.js + node-pty) |
-| 👥 Users & Plans | Hosting users with plans limiting websites/databases |
+---
 
-## Web server architecture (all three at once)
-
-```
-            ┌────────────────────────────────────────────┐
-Internet →  │ Nginx  :80/:443   (front-end + SSL)        │
-            └───────┬───────────────────────┬────────────┘
-                    │ direct (nginx sites)  │ proxy_pass
-                    ▼                       ▼
-              docroot files        Apache :8080  ·  OpenLiteSpeed :8088
-```
-
-Every website picks **one** backend:
-
-- `nginx` → Nginx serves it directly (PHP via php-fpm socket)
-- `apache` → Apache vhost on port **8080**, Nginx proxies 80/443 → 8080
-- `openlitespeed` → OLS vhost on port **8088**, Nginx proxies 80/443 → 8088
-
-OpenLiteSpeed virtual hosts are generated into `$SERVER_ROOT/conf/letzcontrol-vhosts.conf`
-(single include file) + `conf/vhosts/<domain>/vhconf.conf`.
-
-## 🧩 Setup Wizard (admin)
-
-After logging in, open **Setup Wizard** in the sidebar. It detects what is already
-installed and one-click installs the rest with live output:
-
-Nginx → Apache (auto-moved to port 8080) → PHP 8.3-FPM → MariaDB (panel DB
-access configured automatically via unix socket) → Certbot → OpenLiteSpeed
-(port 8088) → Docker.
-
-## Requirements
-
-- Debian/Ubuntu VPS (systemd-based)
-- Node.js ≥ 18
-- **root** (the panel manages system services, vhosts and MySQL)
-- Optional, per feature: `nginx`, `apache2`, `openlitespeed`, `phpX.Y-fpm`, `mysql-server`/`mariadb-server`, `docker`, `certbot`
-
-## Installation (one line)
+## 🚀 Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/asif-letz/letzcontrol/main/install.sh | sudo bash
 ```
 
-Installing a fork instead:
+That is the whole install. It detects your OS, installs Node.js if needed, sets
+up a systemd service, opens the firewall port and prints your admin password.
+
+Then open **`http://your-server-ip:2087`** and log in.
+
+<details>
+<summary>Installing a fork, a custom path or port</summary>
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/myuser/letzcontrol/main/install.sh | sudo bash
-```
+# a fork
+GITHUB_REPO=myuser/letzcontrol bash install.sh
 
-That is the whole thing. The installer:
+# custom location / port / no systemd (containers)
+sudo bash install.sh --dir /srv/panel
+sudo bash install.sh --port 8080
+sudo bash install.sh --no-service
 
-- checks for Ubuntu/Debian + systemd and refuses to run without root
-- installs **Node.js 22** if it is missing (Nodesource), and verifies `>= 18`
-- installs `build-essential` + `python3` so the web terminal works
-- downloads the panel to `/opt/letzcontrol` and runs `npm ci --omit=dev`
-- creates and starts a **systemd** service that survives reboots
-- opens the port in **ufw** / **firewalld** if a firewall is active
-- prints the generated admin password at the end
-
-Then open `http://your-server-ip:2087`.
-
-**Re-running the same command is an upgrade** — it backs up `data/` and
-`config.json` to `/root/letzcontrol-backup-<timestamp>/`, stops the service,
-replaces the code, reinstalls dependencies and restarts. Your sites, mailboxes,
-databases, users and the admin password are all preserved.
-
-### Options
-
-```bash
-sudo bash install.sh --dir /srv/panel     # different install directory
-sudo bash install.sh --port 8080          # different panel port
-sudo bash install.sh --no-service         # no systemd (containers, chroots)
-bash install.sh --help                    # full help
+bash install.sh --help      # all options
 ```
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `PANEL_VERSION` | `latest` | git tag/branch to install |
+| `GITHUB_REPO` | `asif-letz/letzcontrol` | repo to install from |
+| `PANEL_VERSION` | `latest` | tag or branch |
 | `INSTALL_DIR` | `/opt/letzcontrol` | where the panel lives |
 | `PANEL_PORT` | `2087` | panel listen port |
-| `REPO_URL` / `TARBALL_URL` | the GitHub repo | change to install a fork |
 
-Installing from a local checkout (no GitHub yet):
-
-```bash
-tar czf /tmp/letzcontrol.tar.gz --exclude=node_modules --exclude=data .
-TARBALL_URL=file:///tmp/letzcontrol.tar.gz sudo bash install.sh
-```
-
-### Manual installation
+</details>
 
 <details>
-<summary>If you prefer to do it by hand</summary>
+<summary>Manual installation</summary>
 
 ```bash
+git clone https://github.com/asif-letz/letzcontrol.git /opt/letzcontrol
 cd /opt/letzcontrol
 apt update && apt install -y build-essential python3
 npm install --omit=dev
 node server.js
 ```
 
-On first start `config.json` is created and an **admin account with a random
-password** is printed to the console and saved to
-`data/ADMIN_CREDENTIALS.txt`. Log in and change it immediately.
-
+On first start, `config.json` is created and an **admin account with a random
+password** is printed to the terminal and saved to `data/ADMIN_CREDENTIALS.txt`.
 To run it as a service:
 
 ```bash
@@ -131,10 +70,119 @@ systemctl daemon-reload && systemctl enable --now letzcontrol
 
 </details>
 
-### Put the panel itself behind Nginx (optional, recommended)
+### Upgrading
+
+Re-run the install command. It backs up `data/` and `config.json` to
+`/root/letzcontrol-backup-<timestamp>/`, replaces the code and restarts.
+Your sites, mailboxes, databases, users and admin password are preserved.
+
+---
+
+## ✨ Features
+
+| | Module | What it does |
+|---|---|---|
+| 📊 | **Dashboard** | Live CPU / RAM / disk / network via WebSocket push, key-service status |
+| 🌐 | **Websites** | Virtual hosts on Nginx, Apache **and** OpenLiteSpeed simultaneously · per-site PHP version · free Let's Encrypt SSL · WordPress/npm/proxy backends |
+| 🛰️ | **DNS** | Zones, A/AAAA/MX/TXT/CNAME records, DKIM hints, mail DNS presets |
+| 🧭 | **WordPress** | Install, versions, plugins/themes, one-click admin, database browser |
+| 📧 | **Mail** | Mailboxes with per-mailbox webmail links, self-service password change in Roundcube, DKIM, DNS records |
+| 🗄️ | **Databases** | Create/drop MySQL/MariaDB databases and users, phpMyAdmin, import & download |
+| 🐘 | **PHP** | All installed PHP-FPM versions, extensions, restart, default CLI switch |
+| ⚙️ | **Services** | Full systemd control, curates the ~170 units down to the 15 that matter |
+| 🖥️ | **Servers** | Per-server configure / tweak / enable / disable for Nginx, Apache, OpenLiteSpeed |
+| 📁 | **Files** | Browser file manager, inline editor, **uploads with live per-file progress, speed and ETA** |
+| 🐳 | **Docker** | Containers and images: start, stop, logs, remove |
+| ⏰ | **Cron** | Visual crontab editor plus WordPress cron events |
+| 🧱 | **Addons** | Redis, Varnish, webmail, mail, antivirus, certbot, Docker, cron, Node.js, Perl, FTP, phpMyAdmin, BIND9 |
+| 💻 | **Terminal** | Full web terminal (xterm.js + node-pty) |
+| 👥 | **Users & Plans** | Hosting users with plan limits on sites/databases |
+| 🔧 | **Settings** | Panel config, data backup/restore, active sessions, system info |
+| 🧩 | **Setup Wizard** | Detects what is installed and one-click installs the rest |
+
+---
+
+## 🏗️ How the web servers fit together
+
+```
+              ┌──────────────────────────────────────────────┐
+  Internet →  │  Nginx   :80 / :443     (front-end + SSL)     │
+              └───────┬────────────────────────┬─────────────┘
+                      │ direct                 │ proxy_pass
+                      ▼                        ▼
+                docroot files        Apache :8080 · OpenLiteSpeed :8088
+```
+
+Each website picks **one** backend:
+
+- `nginx` — Nginx serves it directly, PHP via the `phpX.Y-fpm` socket
+- `apache` — Apache vhost on **:8080**, Nginx proxies 80/443 → 8080
+- `openlitespeed` — OLS vhost on **:8088**, Nginx proxies 80/443 → 8088
+- `node` — for an app the panel only fronts (proxy to its own port)
+
+Because the backends live on their own ports, **all three can run at the same
+time** without fighting over 80/443.
+
+---
+
+## 🧩 Setup Wizard
+
+After logging in, open **Setup Wizard**. It detects what is already present and
+installs only what is missing, with live output:
+
+`nginx → apache → php → mariadb → certbot → bind9 → openlitespeed → docker → nodejs → redis → mail → webmail → phpmyadmin`
+
+---
+
+## 📋 Requirements
+
+- **Debian or Ubuntu**, systemd-based
+- **root** — the panel manages services, vhosts and databases
+- Everything else is installed by the wizard: `nginx`, `apache2`,
+  `openlitespeed`, `phpX.Y-fpm`, `mariadb-server`, `certbot`, `docker`,
+  `redis`, `bind9`, mail stack
+- Node.js ≥ 18 is required; the installer adds it if missing
+
+---
+
+## ⚙️ Configuration
+
+`config.json` is created on first run (see `config.example.json`). Every value
+can also be changed from **Settings → Panel configuration** without editing
+files.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `port` / `host` | `2087` / `0.0.0.0` | Panel bind address |
+| `sitesRoot` | `/var/www` | Docroots: `<sitesRoot>/<domain>/public` |
+| `ports.apache` / `ports.openlitespeed` | `8080` / `8088` | Backend ports so all servers coexist |
+| `mysql.*` | root @ `127.0.0.1` | Root DB credentials for the database manager |
+| `certbotEmail` | `""` | Let's Encrypt contact address |
+| `fileManagerRoots` | `["/"]` | Paths the file manager may browse |
+| `sessionSecret` | auto-generated | Signs session cookies — never commit it |
+
+---
+
+## 🔒 Security
+
+**Read this before exposing the panel.**
+
+- The panel **runs as root** and its web terminal gives a **root shell**.
+  Anyone who logs in owns the machine.
+- Keep it behind a firewall, an SSH tunnel or a private network. Do not leave
+  `:2087` open to the internet on a machine you care about.
+- The first admin password is written to `data/ADMIN_CREDENTIALS.txt` —
+  **change it, then delete the file.**
+- All API routes require an authenticated session. Cookies are
+  `HttpOnly` + `SameSite=Lax`; login is rate-limited (5 failures → 60 s lockout
+  per IP).
+- Non-admin (`user` role) accounts are scoped to their own websites and
+  databases, and capped by their plan.
+- Put the panel behind Nginx with TLS and set `"host": "127.0.0.1"` so it is not
+  reachable directly.
 
 <details>
-<summary>Reverse proxy + TLS</summary>
+<summary>Example: panel behind Nginx + TLS</summary>
 
 ```nginx
 server {
@@ -142,61 +190,48 @@ server {
     server_name panel.example.com;
     ssl_certificate     /etc/letsencrypt/live/panel.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/panel.example.com/privkey.pem;
+
     location / {
         proxy_pass http://127.0.0.1:2087;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;   # needed for terminal/stats websockets
+        proxy_set_header Upgrade $http_upgrade;   # needed for terminal + stats websockets
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
     }
 }
 ```
 
-Then set `"host": "127.0.0.1"` in `config.json` so the panel is not exposed
-directly on 2087.
-
 </details>
 
-## Configuration (`config.json`)
+---
 
-| Key | Default | Meaning |
-|---|---|---|
-| `port` / `host` | `2087` / `0.0.0.0` | Panel bind address (also editable in **Settings → Panel configuration**) |
-| `sitesRoot` | `/var/www` | Docroots: `<sitesRoot>/<domain>/public` |
-| `ports.apache` / `ports.openlitespeed` | `8080` / `8088` | Backend ports so all servers coexist |
-| `mysql.*` | root@127.0.0.1 | Root DB credentials for the database manager |
-| `certbotEmail` | `""` | Let's Encrypt contact email |
-| `fileManagerRoots` | `["/"]` | Paths the file manager may access |
-
-## Security notes ⚠️
-
-- The panel **runs as root** and the web terminal gives a root shell. Protect it:
-  use a strong admin password, keep the panel behind Nginx with SSL, and/or
-  restrict access by IP or VPN.
-- All API endpoints require an authenticated session; login is rate-limited
-  (5 failures → 60 s lockout). Session cookies are `HttpOnly; SameSite=Lax`.
-- Users with the `user` role only see/manage their own websites and databases
-  and are capped by their plan.
-
-## Development
+## 🛠️ Development
 
 ```bash
 npm install
 npm run dev        # auto-reload
+npm start          # production
 ```
 
-Project layout:
-
 ```
-server.js            entry point
-config.js/.json      configuration
-lib/                 backend modules (auth, sites, databases, php, docker,
-                     services, files, terminal, stats, users, db)
-views/index.html     app shell (served only when authenticated)
-public/              static assets (login page, css, js views)
-data/                JSON database + admin credentials file (gitignored)
+server.js          entry point
+config.js/.json    configuration loader (+ config.example.json)
+install.sh         one-line installer
+letzcontrol.service  systemd unit
+lib/               backend modules (auth, sites, databases, php, docker,
+                   services, files, terminal, stats, mail, dns, wordpress,
+                   addons, servers, cron, settings, setup, users, db)
+views/index.html   app shell
+public/            static assets (login page, css, js views)
+data/              JSON database + first-run credentials (gitignored)
 ```
 
-## License
+Stack: Node.js, Express, Socket.IO, mysql2, bcrypt, systeminformation,
+multer, node-pty (optional), xterm.js. No build step and no framework — plain
+ES modules in the browser.
 
-MIT
+---
+
+## 📄 License
+
+MIT — see [LICENSE](LICENSE).
