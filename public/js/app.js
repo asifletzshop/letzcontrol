@@ -53,7 +53,49 @@
   overlay.onclick = closeSidebar;
 
   let activeView = null;
-  const visibleNav = () => NAV.filter((n) => !(n.admin && me.role !== 'admin'));
+
+  /* The Setup Wizard installs the whole hosting stack. Once every component it
+   * manages is present there is nothing left for it to do, so it is hidden
+   * rather than left sitting in the menu as a link that does nothing. The
+   * check is the same one the wizard itself runs, and the server caches the
+   * detection for a minute, so this costs one request per page load. */
+  let setupComplete = false;
+  let setupChecked = false;
+
+  const visibleNav = () => NAV.filter((n) => {
+    if (n.admin && me.role !== 'admin') return false;
+    if (n.id === 'setup' && setupComplete) return false;
+    return true;
+  });
+
+  /** Push the current state onto the Settings → System restore button. Kept
+   *  separate from the check because that button is rendered by a view that
+   *  runs AFTER the check has already finished. */
+  function applySetupRestore() {
+    const restore = document.querySelector('[data-setup-restore]');
+    if (!restore) return;
+    restore.style.display = setupComplete ? '' : 'none';
+    restore.textContent = setupComplete
+      ? 'Setup Wizard — everything is installed. Show it again'
+      : '';
+  }
+
+  async function refreshSetupVisibility() {
+    if (me.role !== 'admin') { setupChecked = true; applySetupRestore(); return; }
+    try {
+      const res = await api.get('/setup/components');
+      const list = res.components || [];
+      setupComplete = list.length > 0 && list.every((c) => c.installed);
+    } catch {
+      /* Detection failed (or the user is mid-install). Leave the entry visible:
+       * a wizard you cannot see is far more annoying than one that is already
+       * installed, and hiding something on a failed check can strand an admin
+       * who cannot find the tool they need. */
+      setupComplete = false;
+    }
+    setupChecked = true;
+    applySetupRestore();
+  }
 
   function renderNav() {
     navEl.innerHTML = '';
@@ -94,6 +136,18 @@
       contentEl.innerHTML = '';
       contentEl.appendChild(ui.el('div', { class: 'banner' }, `Failed to load: ${e.message}`));
     }
+
+    /* These three pages can change what is installed, so re-check afterwards.
+     * A wizard hidden because the stack was complete has to come back the
+     * moment something is actually missing again. */
+    if (setupChecked && ['setup', 'servers', 'addons'].includes(id)) {
+      const was = setupComplete;
+      await refreshSetupVisibility();
+      if (was !== setupComplete) renderNav();
+    }
+    /* The restore button lives inside the view that just rendered, so it is
+     * synced after every render rather than only inside the check above. */
+    applySetupRestore();
   }
 
   /* ================= command palette (Ctrl+K) ================= */
@@ -225,5 +279,10 @@
   });
 
   window.addEventListener('hashchange', route);
-  route();
+  /* Resolve the setup state BEFORE the first paint, otherwise the wizard shows
+   * in the sidebar for a frame and then vanishes. */
+  (async () => {
+    await refreshSetupVisibility();
+    route();
+  })();
 })();

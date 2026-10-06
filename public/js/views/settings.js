@@ -542,6 +542,14 @@ window.SettingsView = (() => {
   /* ------------------------------ system ------------------------------ */
   function systemCard() {
     const box = ui.el('pre', { class: 'pre-log', style: 'max-height:260px' }, 'Loading…');
+
+    /* Escape hatch for the Setup Wizard. app.js hides it from the sidebar once
+     * every component is installed, and this brings it back on demand - hiding a
+     * tool with no way to reach it again would be a trap the first time
+     * something did need reinstalling. */
+    const restore = ui.el('button', { 'data-setup-restore': '', class: 'btn btn-sm', style: 'display:none;margin-top:10px' });
+    restore.onclick = () => { location.hash = '#/setup'; };
+
     api.get('/settings/system').then((s) => {
       box.textContent = [
         `hostname : ${s.hostname}`,
@@ -561,7 +569,8 @@ window.SettingsView = (() => {
 
     return ui.el('div', { class: 'card' },
       ui.el('h3', {}, 'System'),
-      box
+      box,
+      restore
     );
   }
 
