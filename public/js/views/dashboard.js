@@ -294,23 +294,24 @@ const DEFAULT_ORDER = ['stats', 'quick', 'band'];
     const actionsCard = ui.el('div', { class: 'card' },
       ui.el('h3', {}, 'Quick actions'), actions);
 
-    /* ---------- one line of five ----------
-     * CPU, Memory, Key services, System status and Hosting stack share a single
-     * grid row, so they come out the same size and read as one band across the
-     * dashboard. At a fifth of the screen each (~225px) the text-heavy cards
-     * need compact styling, and long values are clamped to one line with the
-     * full text in a title attribute - nothing is dropped. */
+    /* ---------- one line of four ----------
+     * System status leads, then the two live charts and Key services, sharing a
+     * single grid row so they all come out the same size. The old fifth card
+     * (Hosting stack) has gone; the "N active" total it carried moved into
+     * Key services, which is the same subject, so nothing is lost that had
+     * another sensible home. */
     const keyCard = ui.el('div', { class: 'card card-fill' },
       ui.el('h3', {}, 'Key services'),
       ui.el('p', { class: 'card-sub clamp' }, 'Manage all under Services'),
       ui.el('div', { class: 'key-svc-box', id: 'keySvcBox' },
-        ui.el('span', { class: 'text-dim' }, 'Checking…')));
+        ui.el('span', { class: 'text-dim' }, 'Checking…')),
+      ui.el('div', { class: 'svc-total', id: 'keySvcActive' }, ''));
 
     const s = info.static;
     const lv = info.live;
 
     /* Long values (the CPU model especially) are the only thing that cannot
-     * fit a fifth of the screen, so they get a tooltip rather than being
+     * fit a quarter of the screen, so they get a tooltip rather than being
      * truncated away. */
     const kv = (k, id, initial, cls) => [
       ui.el('dt', {}, k),
@@ -333,36 +334,15 @@ const DEFAULT_ORDER = ['stats', 'quick', 'band'];
         ...kv('Swap', 'sysSwap', fmtSwap(lv))
       ));
 
-    /* Two stacked tiles: side by side they will not fit a fifth of the screen. */
-    const siteBtn = ui.el('button', { class: 'qa-btn', type: 'button' },
-      ui.el('span', { class: 'qa-ico' }, '🌐'),
-      ui.el('span', { id: 'siteCount' }, '–'), ' ',
-      ui.el('span', { id: 'siteCountLabel' }, 'sites'));
-    siteBtn.onclick = () => { location.hash = '#/sites'; };
-    const dbBtn = ui.el('button', { class: 'qa-btn', type: 'button' },
-      ui.el('span', { class: 'qa-ico' }, '🗄️'),
-      ui.el('span', { id: 'dbCount' }, '–'), ' ',
-      ui.el('span', { id: 'dbCountLabel' }, 'databases'));
-    dbBtn.onclick = () => { location.hash = '#/databases'; };
-
-    const stackCard = ui.el('div', { class: 'card card-fill', id: 'stackCard' },
-      ui.el('h3', {}, 'Hosting stack'),
-      ui.el('div', { class: 'stack-tiles' }, siteBtn, dbBtn),
-      ui.el('div', { class: 'divider' }),
-      ui.el('h3', { class: 'sub-h' }, 'Services health'),
-      ui.el('div', { class: 'health-strip', id: 'healthStrip' },
-        ui.el('span', { class: 'health-pill' }, 'Checking…')));
-
-    const band = ui.el('div', { class: 'grid cols-5' },
+    const band = ui.el('div', { class: 'grid band' },
+      sysCard,
       ui.el('div', { class: 'card card-fill' },
         ui.el('h3', {}, 'CPU % (live)'),
         ui.el('div', { class: 'chart-box grow' }, ui.el('canvas', { id: 'cpuChart' }))),
       ui.el('div', { class: 'card card-fill' },
         ui.el('h3', {}, 'Memory % (live)'),
         ui.el('div', { class: 'chart-box grow' }, ui.el('canvas', { id: 'ramChart' }))),
-      keyCard,
-      sysCard,
-      stackCard
+      keyCard
     );
 
     const layout = ui.el('div', { id: 'dashLayout' });
@@ -452,62 +432,25 @@ const DEFAULT_ORDER = ['stats', 'quick', 'band'];
     socket = io('/stats');
     socket.on('stats', apply);
 
-    /* ---------- async enrichment (services, sites, dbs) ---------- */
+    /* ---------- async enrichment (services) ---------- */
     Promise.allSettled([
       api.get('/services'),
-      api.get('/services/key'),
-      api.get('/sites'),
-      api.get('/databases')
-    ]).then(([svc, key, sites, dbs]) => {
+      api.get('/services/key')
+    ]).then(([svc, key]) => {
       if (!root.isConnected) return;
       if (key.status === 'fulfilled') renderKey(el('keySvcBox'), key.value.services || [], me);
-      if (sites.status === 'fulfilled' && el('siteCount')) {
-        const list = sites.value.sites || [];
-        el('siteCount').textContent = list.length;
-        if (el('siteCountLabel')) el('siteCountLabel').textContent = list.length === 1 ? 'site' : 'sites';
-        const ssl = list.filter((x) => x.ssl).length;
-        /* Append the SSL summary to the stack card itself. This used to walk up
-           from .quick-actions, and that container is now .stack-tiles, so the
-           old lookup returned null and threw - taking the rest of the async
-           enrichment (databases, health pills) down with it. */
-        const host = document.getElementById('stackCard');
-        if (host) {
-          host.appendChild(ui.el('div', { class: 'card-sub', style: 'margin-top:auto;padding-top:8px' },
-            list.length ? `${ssl}/${list.length} ${list.length === 1 ? 'site' : 'sites'} secured with SSL` : 'No websites yet'));
-        }
-      }
-      if (dbs.status === 'fulfilled' && el('dbCount')) {
-        const n = (dbs.value.databases || []).length;
-        el('dbCount').textContent = n;
-        if (el('dbCountLabel')) el('dbCountLabel').textContent = n === 1 ? 'database' : 'databases';
-      }
+      /* The Hosting stack card is gone, so the site and database counts it
+       * showed have no tile left to live in, and those requests are no longer
+       * worth making for a number with nowhere to go. The "N active" total it
+       * carried moved into Key services, which is the same subject - the old
+       * health pills just repeated the six rows already on screen. */
       if (svc.status === 'fulfilled') {
-        const strip = el('healthStrip');
-        if (!strip) return;
-        strip.innerHTML = '';
+        const total = el('keySvcActive');
+        if (!total) return;
         const all = svc.value.services || [];
-        let shown = 0;
-        /* Health pills use the same six services as the Key services table, so
-         * the two never disagree about what the dashboard considers important. */
-        for (const name of DASHBOARD_SERVICES) {
-          const unit = all.find((u) => {
-            const base = u.unit.replace(/\.service$/, '');
-            if (name === 'MariaDB') return base === 'mariadb' || base === 'mysql';
-            if (name === 'PHP-FPM') return /^php[\d.]*-fpm$/.test(base);
-            if (name === 'OpenLiteSpeed') return base === 'lshttpd' || base === 'lsws' || base === 'openlitespeed';
-            if (name === 'Redis') return base === 'redis' || base === 'redis-server';
-            return base === name.toLowerCase();
-          });
-          if (!unit) continue;
-          shown++;
-          const running = unit.active === 'active';
-          strip.appendChild(ui.el('span', { class: 'health-pill ' + (running ? 'ok' : 'bad'), title: unit.unit },
-            ui.el('span', { class: 'dot' }), name));
-        }
         const activeAll = all.filter((u) => u.active === 'active').length;
-        strip.appendChild(ui.el('span', { class: 'health-pill', title: `${activeAll} units active out of ${all.length} loaded` },
-          ui.el('span', { class: 'dot' }), `${activeAll} active`));
-        if (!shown) strip.appendChild(ui.el('span', { class: 'health-pill' }, 'No services matched'));
+        total.textContent = `${activeAll} of ${all.length} system services active`;
+        total.title = `${activeAll} active out of ${all.length} loaded units`;
       }
     });
   }
