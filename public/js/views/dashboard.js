@@ -178,11 +178,11 @@ window.DashboardView = (() => {
    * inherits the other's layout. Blocks the browser does not know about (an
    * older stored order, or a block added in a later release) are ignored
    * rather than rendered empty. */
-  /* Key services now lives inside the charts grid, so the separate 'services'
-   block is gone. An old saved order may still list it; applyOrder ignores ids
-   it does not recognise and appends the blocks it does have, so a stale entry
-   costs nothing and the card still shows up with the charts. */
-const DEFAULT_ORDER = ['stats', 'quick', 'charts', 'system'];
+  /* The five cards are one grid, so they are one draggable block - you cannot
+   drag a card out of a row that has to stay in a line. A saved layout may
+   still list the old 'system' block; applyOrder ignores ids it does not
+   recognise, so that costs nothing and the band still renders. */
+const DEFAULT_ORDER = ['stats', 'quick', 'band'];
 
   function block(id, node) {
     const w = ui.el('div', { 'data-block': id, class: 'dash-block' });
@@ -294,54 +294,75 @@ const DEFAULT_ORDER = ['stats', 'quick', 'charts', 'system'];
     const actionsCard = ui.el('div', { class: 'card' },
       ui.el('h3', {}, 'Quick actions'), actions);
 
-    /* ---------- charts + key services ----------
-     * These three share one grid so they come out exactly the same size. Key
-     * services used to be a full-width card of its own below the charts, which
-     * made it twice as wide as the CPU chart next to it and taller as well. */
+    /* ---------- one line of five ----------
+     * CPU, Memory, Key services, System status and Hosting stack share a single
+     * grid row, so they come out the same size and read as one band across the
+     * dashboard. At a fifth of the screen each (~225px) the text-heavy cards
+     * need compact styling, and long values are clamped to one line with the
+     * full text in a title attribute - nothing is dropped. */
     const keyCard = ui.el('div', { class: 'card card-fill' },
       ui.el('h3', {}, 'Key services'),
-      ui.el('p', { class: 'text-dim', style: 'margin:-4px 0 10px;font-size:12px' },
-        'The six that matter most. Manage all of them under Services.'),
+      ui.el('p', { class: 'card-sub clamp' }, 'Manage all under Services'),
       ui.el('div', { class: 'key-svc-box', id: 'keySvcBox' },
         ui.el('span', { class: 'text-dim' }, 'Checking…')));
 
-    const charts = ui.el('div', { class: 'grid cols-3' },
+    const s = info.static;
+    const lv = info.live;
+
+    /* Long values (the CPU model especially) are the only thing that cannot
+     * fit a fifth of the screen, so they get a tooltip rather than being
+     * truncated away. */
+    const kv = (k, id, initial, cls) => [
+      ui.el('dt', {}, k),
+      ui.el('dd', { id, class: 'clamp' + (cls ? ' ' + cls : ''), title: String(initial == null ? '' : initial) },
+        initial == null || initial === '' ? '–' : String(initial))
+    ];
+
+    const sysCard = ui.el('div', { class: 'card card-fill' },
+      ui.el('h3', {}, 'System status'),
+      ui.el('dl', { class: 'kv kv-tight' },
+        ...kv('Host', null, s.hostname),
+        ...kv('OS', null, `${s.distro} (${s.arch})`),
+        ...kv('Kernel', null, s.kernel),
+        ...kv('Cores', null, s.cores, 'mono'),
+        ...kv('CPU', null, s.cpu, 'mono'),
+        ...kv('IP', null, s.ip || '–', 'mono'),
+        ...kv('Uptime', 'uptimeVal', ui.fmtUptime(lv.uptime)),
+        ...kv('Load', 'sysLoad', String(lv.loadavg ?? '–')),
+        ...kv('Memory', 'sysMem', lv.memTotal ? `${ui.fmtBytes(lv.memUsed)} / ${ui.fmtBytes(lv.memTotal)}` : '–'),
+        ...kv('Swap', 'sysSwap', fmtSwap(lv))
+      ));
+
+    /* Two stacked tiles: side by side they will not fit a fifth of the screen. */
+    const siteBtn = ui.el('button', { class: 'qa-btn', type: 'button' },
+      ui.el('span', { class: 'qa-ico' }, '🌐'),
+      ui.el('span', { id: 'siteCount' }, '–'), ' ',
+      ui.el('span', { id: 'siteCountLabel' }, 'sites'));
+    siteBtn.onclick = () => { location.hash = '#/sites'; };
+    const dbBtn = ui.el('button', { class: 'qa-btn', type: 'button' },
+      ui.el('span', { class: 'qa-ico' }, '🗄️'),
+      ui.el('span', { id: 'dbCount' }, '–'), ' ',
+      ui.el('span', { id: 'dbCountLabel' }, 'databases'));
+    dbBtn.onclick = () => { location.hash = '#/databases'; };
+
+    const stackCard = ui.el('div', { class: 'card card-fill', id: 'stackCard' },
+      ui.el('h3', {}, 'Hosting stack'),
+      ui.el('div', { class: 'stack-tiles' }, siteBtn, dbBtn),
+      ui.el('div', { class: 'divider' }),
+      ui.el('h3', { class: 'sub-h' }, 'Services health'),
+      ui.el('div', { class: 'health-strip', id: 'healthStrip' },
+        ui.el('span', { class: 'health-pill' }, 'Checking…')));
+
+    const band = ui.el('div', { class: 'grid cols-5' },
       ui.el('div', { class: 'card card-fill' },
         ui.el('h3', {}, 'CPU % (live)'),
         ui.el('div', { class: 'chart-box grow' }, ui.el('canvas', { id: 'cpuChart' }))),
       ui.el('div', { class: 'card card-fill' },
         ui.el('h3', {}, 'Memory % (live)'),
         ui.el('div', { class: 'chart-box grow' }, ui.el('canvas', { id: 'ramChart' }))),
-      keyCard
-    );
-
-    /* ---------- system + hosting + services ---------- */
-    const s = info.static;
-    const lv = info.live;
-    const sysCard = ui.el('div', { class: 'card' },
-      ui.el('h3', {}, 'System status'),
-      ui.el('dl', { class: 'kv' },
-        ui.el('dt', {}, 'Hostname'), ui.el('dd', {}, s.hostname),
-        ui.el('dt', {}, 'OS'), ui.el('dd', {}, `${s.distro} (${s.arch})`),
-        ui.el('dt', {}, 'Kernel'), ui.el('dd', {}, s.kernel),
-        ui.el('dt', {}, 'CPU'), ui.el('dd', {}, `${s.cpu} — ${s.cores} cores`),
-        ui.el('dt', {}, 'IP address'), ui.el('dd', { class: 'mono' }, s.ip || '–'),
-        ui.el('dt', {}, 'Uptime'), ui.el('dd', { id: 'uptimeVal' }, ui.fmtUptime(lv.uptime)),
-        ui.el('dt', {}, 'Load average'), ui.el('dd', { id: 'sysLoad' }, String(lv.loadavg ?? '–')),
-        ui.el('dt', {}, 'Memory'), ui.el('dd', { id: 'sysMem' }, `${ui.fmtBytes(lv.memUsed)} / ${ui.fmtBytes(lv.memTotal)} (${lv.memPct}%)`),
-        ui.el('dt', {}, 'Swap'), ui.el('dd', { id: 'sysSwap' }, fmtSwap(lv))
-      )
-    );
-
-    const stackCard = ui.el('div', { class: 'card' },
-      ui.el('h3', {}, 'Hosting stack'),
-      ui.el('div', { class: 'quick-actions' },
-        (() => { const b = ui.el('button', { class: 'qa-btn', type: 'button' }, ui.el('span', { class: 'qa-ico' }, '🌐'), ui.el('span', { id: 'siteCount' }, '–'), ' ', ui.el('span', { id: 'siteCountLabel' }, 'sites')); b.onclick = () => { location.hash = '#/sites'; }; return b; })(),
-        (() => { const b = ui.el('button', { class: 'qa-btn', type: 'button' }, ui.el('span', { class: 'qa-ico' }, '🗄️'), ui.el('span', { id: 'dbCount' }, '–'), ' ', ui.el('span', { id: 'dbCountLabel' }, 'databases')); b.onclick = () => { location.hash = '#/databases'; }; return b; })()
-      ),
-      ui.el('div', { class: 'divider' }),
-      ui.el('h3', {}, 'Services health'),
-      ui.el('div', { class: 'health-strip', id: 'healthStrip' }, ui.el('span', { class: 'health-pill' }, 'Checking…'))
+      keyCard,
+      sysCard,
+      stackCard
     );
 
     const layout = ui.el('div', { id: 'dashLayout' });
@@ -366,8 +387,7 @@ const DEFAULT_ORDER = ['stats', 'quick', 'charts', 'system'];
     layout.append(
       block('stats', cards),
       block('quick', actionsCard),
-      block('charts', charts),
-      block('system', ui.el('div', { class: 'grid cols-2' }, sysCard, stackCard))
+      block('band', band)
     );
 
     /* cPanel's icon grid leads the page, above the metrics, which is where
@@ -381,7 +401,7 @@ const DEFAULT_ORDER = ['stats', 'quick', 'charts', 'system'];
     root.append(layout, layoutBar);
 
     /* Give every block a grip, then restore this account's saved order. */
-    const LABELS = { stats: 'Server stats', quick: 'Quick actions', charts: 'Live charts and key services', system: 'System and hosting' };
+    const LABELS = { stats: 'Server stats', quick: 'Quick actions', band: 'Live metrics, services and system' };
     for (const w of layout.querySelectorAll(':scope > [data-block]')) {
       addGrip(w, LABELS[w.dataset.block] || w.dataset.block);
     }
@@ -410,11 +430,19 @@ const DEFAULT_ORDER = ['stats', 'quick', 'charts', 'system'];
       setStat('ram', d.memPct + '%', `${ui.fmtBytes(d.memUsed)} / ${ui.fmtBytes(d.memTotal)}`, d.memPct);
       setStat('disk', Math.round(d.diskPct) + '%', `${ui.fmtBytes(d.diskUsed)} / ${ui.fmtBytes(d.diskTotal)}`, d.diskPct);
       setStat('net', `↓ ${ui.fmtBytes(d.rxSec)}/s`, `↑ ${ui.fmtBytes(d.txSec)}/s · up ${ui.fmtUptime(d.uptime)}`, null);
-      const up = el('uptimeVal'); if (up) up.textContent = ui.fmtUptime(d.uptime);
-      const ld = el('sysLoad'); if (ld) ld.textContent = String(d.loadavg ?? '–');
-      const mm = el('sysMem');
-      if (mm) mm.textContent = d.memTotal ? `${ui.fmtBytes(d.memUsed)} / ${ui.fmtBytes(d.memTotal)} (${d.memPct}%)` : '–';
-      const sw = el('sysSwap'); if (sw) sw.textContent = fmtSwap(d);
+      /* These values are clamped to one line, with the full text in the title
+       attribute. Updating textContent alone would leave the tooltip showing
+       whatever the value was at page load, so both are refreshed together. */
+      const put = (id, text) => {
+        const n = el(id);
+        if (!n) return;
+        n.textContent = text;
+        n.title = text;
+      };
+      put('uptimeVal', ui.fmtUptime(d.uptime));
+      put('sysLoad', String(d.loadavg ?? '–'));
+      put('sysMem', d.memTotal ? `${ui.fmtBytes(d.memUsed)} / ${ui.fmtBytes(d.memTotal)} (${d.memPct}%)` : '–');
+      put('sysSwap', fmtSwap(d));
       const t = new Date(d.ts).toLocaleTimeString();
       pushPoint(cpuChart, t, d.cpu);
       pushPoint(ramChart, t, d.memPct);
@@ -438,10 +466,15 @@ const DEFAULT_ORDER = ['stats', 'quick', 'charts', 'system'];
         el('siteCount').textContent = list.length;
         if (el('siteCountLabel')) el('siteCountLabel').textContent = list.length === 1 ? 'site' : 'sites';
         const ssl = list.filter((x) => x.ssl).length;
-        const sub = ui.el('div', { class: 'stat-sub', style: 'margin-top:8px' },
-          list.length ? `${ssl}/${list.length} ${list.length === 1 ? 'site' : 'sites'} secured with SSL` : 'No websites yet');
-        const grid = el('siteCount').closest('.quick-actions').parentElement;
-        grid.appendChild(sub);
+        /* Append the SSL summary to the stack card itself. This used to walk up
+           from .quick-actions, and that container is now .stack-tiles, so the
+           old lookup returned null and threw - taking the rest of the async
+           enrichment (databases, health pills) down with it. */
+        const host = document.getElementById('stackCard');
+        if (host) {
+          host.appendChild(ui.el('div', { class: 'card-sub', style: 'margin-top:auto;padding-top:8px' },
+            list.length ? `${ssl}/${list.length} ${list.length === 1 ? 'site' : 'sites'} secured with SSL` : 'No websites yet'));
+        }
       }
       if (dbs.status === 'fulfilled' && el('dbCount')) {
         const n = (dbs.value.databases || []).length;

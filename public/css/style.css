@@ -154,20 +154,46 @@ kbd {
  * spanning the full width below the charts. */
 .grid.cols-3 { grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
 
-/* A card that fills the height of its grid row. The charts and the services
+/* The single band across the top of the dashboard: CPU, Memory, Key services,
+ * System status and Hosting stack, all the same size. Five equal columns on a
+ * desktop, then step down rather than squeezing them into unusable slivers. */
+.grid.cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 1400px) { .grid.cols-5 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 1120px) { .grid.cols-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 820px)  { .grid.cols-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 540px)  { .grid.cols-5 { grid-template-columns: minmax(0, 1fr); } }
+
+/* A card that fills the height of its grid row. The charts and the service
  * table have very different natural heights; making them all stretch keeps the
- * row tidy and the three boxes identical. */
+ * row tidy and the boxes identical. */
 .card-fill { display: flex; flex-direction: column; min-height: 0; }
-/* `height: auto` is needed: .chart-box sets a fixed 220px further down, and
-   without overriding it here the chart would never grow past that. */
-.card-fill .chart-box.grow { flex: 1 1 auto; height: auto; min-height: 220px; }
+.card-fill .chart-box.grow { flex: 1 1 auto; height: auto; min-height: 180px; }
+
+/* Compact form for cards that now share a fifth of the width. */
+.card-fill h3 { font-size: 12.5px; letter-spacing: .01em; }
+.card-sub { margin: -2px 0 8px; font-size: 11px; color: var(--text-dim); }
+.card .sub-h { margin: 0 0 8px; font-size: 11.5px; }
+/* One line, then an ellipsis. The full value is kept in the title attribute,
+ * so a long CPU model or hostname is still readable on hover. */
+.clamp {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0;
+}
+.kv-tight { grid-template-columns: minmax(38px, auto) 1fr; gap: 5px 8px; font-size: 12px; }
+.kv-tight dd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Hosting stack tiles stack vertically: side by side they do not fit. */
+.stack-tiles { display: grid; gap: 8px; }
+.stack-tiles .qa-btn { width: 100%; justify-content: flex-start; }
 
 /* Key services: let the table take the spare height and scroll only if a box
  * ever has to show more than the six it is capped at, so the card cannot grow
  * past its neighbours. */
 .key-svc-box { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .card-fill table { width: 100%; }
-.card-fill th, .card-fill td { padding: 9px 12px; }
+.card-fill th, .card-fill td { padding: 7px 10px; }
+.card-fill th { font-size: 10.5px; }
+.card-fill .health-strip { display: flex; flex-wrap: wrap; gap: 6px; }
 
 /* ---------- customer dashboard ---------- */
 /* The greeting panel for a hosting customer. Deliberately unlike the admin
