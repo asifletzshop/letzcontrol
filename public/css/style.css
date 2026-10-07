@@ -201,6 +201,10 @@ kbd {
 .card-fill .chart-box.grow { flex: 1 1 auto; height: auto; min-height: 180px; }
 
 /* Compact form for cards that now share a fifth of the width. */
+.app-meta {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  font-size: 11.5px; color: var(--text-dim);
+}
 .card-fill h3 { font-size: 12.5px; letter-spacing: .01em; }
 .card-sub { margin: -2px 0 8px; font-size: 11px; color: var(--text-dim); }
 .card .sub-h { margin: 0 0 8px; font-size: 11.5px; }
