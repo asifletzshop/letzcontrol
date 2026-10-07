@@ -221,6 +221,14 @@ html[data-theme="cpanel"] .qa-ico { background: #e6f1f9; color: #0b6fb8; }
 html[data-theme="cpanel"] .dash-layout-bar { background: #f6f8fa; border-color: var(--border-strong); }
 html[data-theme="cpanel"] .dash-grip { color: #8a97a3; }
 html[data-theme="cpanel"] .dash-grip:hover { background: rgba(11, 111, 184, .1); }
+/* cPanel puts its shortcuts in the icon grid at the top of the page, so the
+   dashboard's own Quick actions card is a second, redundant answer to the same
+   question. Hidden here rather than left out of the render, so that switching
+   the theme back brings it back immediately instead of on the next page load -
+   the theme attribute changes with no re-render, and CSS follows it for free.
+   The block keeps its place in this account's saved order either way, so
+   reordering still works once it is visible again. */
+html[data-theme="cpanel"] .dash-block[data-block="quick"] { display: none; }
 html[data-theme="cpanel"] .user-hero {
   background: linear-gradient(180deg, #fff 0%, #f7fafc 100%);
   border-color: var(--border);
