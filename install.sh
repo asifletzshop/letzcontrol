@@ -267,6 +267,22 @@ UNIT
   fi
 fi
 
+# The admin password is only generated while the panel boots - ensureAdmin()
+# writes data/ADMIN_CREDENTIALS.txt and nothing else does. So whenever we are
+# NOT handing the panel to systemd (no --service, or systemd that is not PID 1,
+# which is every container, chroot and WSL), it would otherwise never run and
+# the installer would end by telling the user to go read a log file for a
+# password that had not even been generated yet.
+#
+# Boot it here in the background purely to generate and surface that password,
+# then stop it again. The summary below already says how to run it properly.
+BOOT_PID=""
+BOOT_LOG=$(mktemp /tmp/.letz-boot.XXXXXX.log)
+if ! { [ "$DO_SERVICE" = "1" ] && [ "$SYSTEMD_USABLE" = "1" ]; }; then
+  node server.js >"$BOOT_LOG" 2>&1 &
+  BOOT_PID=$!
+fi
+
 # ------------------------------ firewall --------------------------------
 step "Firewall"
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
@@ -290,7 +306,10 @@ else
 fi
 printf '%s\n' "$HOW" > /tmp/.letz-how
 
-PORT=$(node -p "try{require('$INSTALL_DIR/config.json').port}catch(e){$PANEL_PORT}" 2>/dev/null || echo "$PANEL_PORT")
+# Same "||''" trap as the dataDir lookup above: a config.json with no port key
+# makes this print "undefined", and the summary would then tell the user to open
+# http://<ip>:undefined.
+PORT=$(node -p "try{require('$INSTALL_DIR/config.json').port||$PANEL_PORT}catch(e){$PANEL_PORT}" 2>/dev/null || echo "$PANEL_PORT")
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 [ -n "$IP" ] || IP=$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || echo "your-server-ip")
 
@@ -309,7 +328,14 @@ echo "  Credentials:"
 # rather than making the user go hunting for it. The file only appears once
 # the service is actually up, so wait for it (it may already exist on an
 # upgrade, which is exactly the case where nothing new is printed).
-CREDS="$INSTALL_DIR/data/ADMIN_CREDENTIALS.txt"
+# Ask the panel's own config for its data directory rather than assuming it
+# sits beside the code. The ||'' matters: config.json without a dataDir key
+# makes require().dataDir evaluate to undefined without throwing, so the catch
+# never runs and node -p prints the string "undefined" - which then becomes the
+# path and the credentials file is never found. That is the whole bug.
+CREDS_DIR=$(node -p "try{require('$INSTALL_DIR/config.json').dataDir||''}catch(e){''}" 2>/dev/null || echo "")
+[ -n "$CREDS_DIR" ] || CREDS_DIR="$INSTALL_DIR/data"
+CREDS="$CREDS_DIR/ADMIN_CREDENTIALS.txt"
 CREDS_WAS_NEW=0
 if [ ! -f "$CREDS" ]; then
   CREDS_WAS_NEW=1
@@ -326,15 +352,39 @@ if [ -f "$CREDS" ]; then
     echo -e "  \033[33mChange this password immediately after logging in.\033[0m"
     warn "delete $CREDS once you have changed it"
   else
-    echo "  Unchanged - this is an upgrade, your existing admin account still applies."
+    # An upgrade prints no password either, which reads exactly like the bug
+    # this section was fixed for. Say plainly that nothing was generated and
+    # where the old one still is, instead of leaving it to guesswork.
+    echo "  Unchanged - this is an upgrade, so no new password was generated."
+    echo "  Your existing admin account still applies."
+    echo "    still the original? it is in $CREDS"
+    echo "    changed it and lost it? reset it with the panel's own helper:"
+    printf '      cd %s && npm run reset-password\n' "$INSTALL_DIR"
   fi
 else
-  warn "no credentials file yet - start the panel and check its log:"
-  if [ "$SYSTEMD_USABLE" = "1" ] && [ "$DO_SERVICE" = "1" ]; then
-    printf '      journalctl -u %s | grep -A3 "Admin account"\n' "$SERVICE_NAME"
+  # Two very different causes land here, and the old message covered both with
+  # one unhelpful line. Say which one it is.
+  if grep -qs "panel listening on" "$BOOT_LOG" 2>/dev/null \
+     || { [ "$DO_SERVICE" = "1" ] && [ "$SYSTEMD_USABLE" = "1" ] && systemctl is-active --quiet "$SERVICE_NAME"; }; then
+    warn "the panel is running but wrote no credentials file."
+    warn "that means an admin account already exists - most likely you upgraded"
+    warn "and already changed the password, so no new one was generated."
   else
-    printf '      cd %s && node server.js\n' "$INSTALL_DIR"
+    warn "the panel did not start, so no password was generated. Its output:"
+    [ -s "$BOOT_LOG" ] && sed 's/^/      /' "$BOOT_LOG" | tail -n 12
+    if [ "$SYSTEMD_USABLE" = "1" ] && [ "$DO_SERVICE" = "1" ]; then
+      printf '      journalctl -u %s | grep -A3 "Admin account"\n' "$SERVICE_NAME"
+    else
+      printf '      cd %s && node server.js\n' "$INSTALL_DIR"
+    fi
   fi
+fi
+
+# The panel was only booted to mint a password; hand the box back the way it was.
+if [ -n "$BOOT_PID" ]; then
+  kill "$BOOT_PID" 2>/dev/null || true
+  wait "$BOOT_PID" 2>/dev/null || true
+  rm -f "$BOOT_LOG"
 fi
 
 cat <<NEXT
