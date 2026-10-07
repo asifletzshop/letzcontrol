@@ -87,6 +87,59 @@ window.NodeAppsView = (() => {
     } catch (e) { ui.toast(e.message, true); }
   }
 
+  /** Move an adopted app onto a panel-owned unit without changing how it runs.
+   *
+   *  This is the one action here that interrupts a live app: the old service has
+   *  to stop so the port is free before the new one can claim it, so expect a few
+   *  seconds of downtime. What makes it safe is that the panel copies the
+   *  existing unit rather than generating a new one - an app's unit usually
+   *  holds settings nobody would think to re-add (an EnvironmentFile with real
+   *  credentials, a MemoryMax, a ReadWritePaths escape hatch that ProtectSystem
+   *  needs). Rewriting it from a template would quietly drop all of that, and
+   *  ProtectSystem without ReadWritePaths fails on the first write with EROFS.
+   *
+   *  The server puts everything back if the app does not come back up. */
+  async function takeOver(app) {
+    let found;
+    try { found = await api.get(`/node-apps/${encodeURIComponent(app.domain)}/inspect`); }
+    catch (e) { return ui.toast(e.message, true); }
+
+    const lines = [];
+    if (found.unit) {
+      lines.push(`Service   ${found.unit.name}`);
+      lines.push(`Start     ${found.unit.execStart}`);
+      lines.push(`User      ${found.unit.user}`);
+      if (found.unit.workingDir) lines.push(`Folder    ${found.unit.workingDir}`);
+    }
+    for (const n of (found.notes || [])) lines.push(`· ${n}`);
+
+    const ok = await ui.confirmBox(
+      `Make the panel the owner of ${app.domain}?\n\n${lines.join('\n')}\n\n`
+      + 'Every setting in that service file is carried across unchanged - the '
+      + 'panel keeps the app running exactly as it runs now, and adds a restart '
+      + 'limit so a broken app cannot crash-loop.\n\n'
+      + 'There will be a few seconds of downtime while the old service stops and '
+      + 'the new one starts. If anything goes wrong the original service is '
+      + 'restored automatically.',
+      { okText: 'Take it over', danger: true });
+    if (!ok) return;
+
+    /* No spinner wrapper: the confirm dialog is already closed and the request
+       has its own progress toast. Showing a second busy state here would just
+       flicker. */
+    try {
+      const r = await api.post(`/node-apps/${encodeURIComponent(app.domain)}/manage`, {});
+      const from = r.tookOverFrom ? ` from "${r.tookOverFrom}"` : '';
+      ui.toast(`${app.domain} is now panel-managed${from} (service ${r.unit}) ✓`);
+      refresh();
+    } catch (e) {
+      /* The server rolled back, so the app is already serving on its old unit.
+         Say so plainly - otherwise a failure here looks like an outage. */
+      ui.toast(e.message, true);
+      refresh();
+    }
+  }
+
   function controls(app) {
     const wrap = ui.el('div', { style: 'display:flex;gap:6px;justify-content:flex-end' });
 
@@ -102,6 +155,14 @@ window.NodeAppsView = (() => {
       const b = mk('◎ Adopt', 'Let the panel take this existing app over — records how it runs, changes nothing', () => adopt(app.domain));
       wrap.appendChild(b);
       return wrap;
+    }
+    /* Adopted, but still running on its own hand-made unit. Offer to make the
+       panel the owner - see takeOver() for why this keeps the existing unit
+       rather than writing a fresh one. */
+    if (!app.panelUnit) {
+      wrap.appendChild(mk('⚙ Make panel-managed',
+        'Let the panel own this service, keeping every setting in its current unit',
+        () => takeOver(app)));
     }
     if (app.active) {
       wrap.append(mk('⏸', 'Stop', () => act('stop')));
