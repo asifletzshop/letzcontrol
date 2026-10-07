@@ -24,7 +24,7 @@
     { id: 'docker', icon: '🐳', label: 'Docker', group: 'Server', sub: 'Containers, images and compose stacks', view: DockerView, admin: true },
     { id: 'cron', icon: '⏰', label: 'Cron Jobs', group: 'Server', sub: 'Scheduled tasks on the server', view: CronView, admin: true },
     { id: 'addons', icon: '🧱', label: 'Addons', group: 'Server', sub: 'Install and manage Redis, Varnish, FTP, antivirus, and more', view: AddonsView, admin: true },
-    { id: 'nodeapps', icon: '🟩', label: 'Node.js Apps', group: 'Server', sub: 'Create and manage Node.js websites with a wizard', view: NodeAppsView, admin: true },
+    { id: 'nodeapps', icon: '🟩', label: 'Apps', group: 'Server', sub: 'Apps running behind a proxy — start, stop and read logs', view: NodeAppsView, admin: true },
     { id: 'nodewizard', icon: '🪄', label: 'New Node.js site', group: 'Server', sub: 'Wizard for a Node.js website', view: NodeWizardView, admin: true, hidden: true },
     { id: 'terminal', icon: '💻', label: 'Terminal', group: 'Server', sub: 'Web shell session', view: TerminalView, admin: true },
     { id: 'setup', icon: '🧩', label: 'Setup Wizard', group: 'Advanced', sub: 'Guided installation of the hosting stack', view: SetupView, admin: true },

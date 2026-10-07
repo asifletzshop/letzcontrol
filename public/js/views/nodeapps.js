@@ -1,5 +1,8 @@
 'use strict';
-/* Node.js apps: the wizard's home, and start/stop/logs for apps it made. */
+/* Apps behind a proxy: the wizard's home, and start/stop/logs for everything
+   registered this way. Not all of them are Node - the wizard builds Node.js
+   sites, but an existing app of any kind (a Python service, say) can be
+   adopted and driven from here too. */
 window.NodeAppsView = (() => {
   let timer = null;
 
@@ -215,11 +218,12 @@ window.NodeAppsView = (() => {
       catch (e) { body.innerHTML = ''; body.appendChild(ui.el('p', {}, e.message)); return; }
 
       body.innerHTML = '';
-      body.appendChild(ui.el('h3', {}, 'Your Node.js apps'));
+      body.appendChild(ui.el('h3', {}, 'Your apps'));
       if (!data.apps.length) {
         body.appendChild(ui.el('p', { class: 'text-dim' },
-          'No Node.js apps yet. The wizard sets up the app folder, a hardened systemd service, ' +
-          'and the Nginx vhost in one go.'));
+          'No apps yet. The wizard sets up the app folder, a hardened systemd service, ' +
+          'and the Nginx vhost in one go. An app that is already running can be ' +
+          'adopted instead, which records how it runs and leaves it alone.'));
       } else {
         for (const a of data.apps) {
           body.appendChild(appCard(a, me));
