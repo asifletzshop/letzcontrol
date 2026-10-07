@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const express = require('express');
+const compression = require('compression');
 const session = require('express-session');
 const { Server } = require('socket.io');
 
@@ -76,13 +77,60 @@ app.use((req, res, next) => {
 io.engine.use(sessionMiddleware); // share sessions with Socket.IO
 
 /* ---------------------------- pages ------------------------------ */
+
+/* gzip, before anything that can produce a body. The panel ships ~86 KB of
+ * JS and CSS that a browser re-downloaded on every visit; compressed it is a
+ * fraction of that, and this is by far the cheapest speed win available - no
+ * build step, no CDN, no change to what the browser does. */
+app.use(compression({
+  filter: (req, res) => {
+    /* Socket.IO and the file manager stream binary; compressing either wastes
+     * CPU for nothing and, for a download, can stall the response. */
+    if (req.path.startsWith('/socket.io/')) return false;
+    if ((res.getHeader('Content-Type') || '').match(/^(image|video|audio)\//)) return false;
+    return compression.filter(req, res);
+  },
+  threshold: 1024
+}));
+
 app.get('/', (req, res) => {
   if (req.session && req.session.userId) {
     return res.sendFile(path.join(__dirname, 'views', 'index.html'));
   }
   res.redirect('/login.html');
 });
-app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+/* Keep search engines out.
+ *
+ * This is a control panel, not a website. The only page reachable without a
+ * session is the login form, and behind that sits a root web terminal, the
+ * database credentials and the file manager. There is nothing here worth
+ * ranking and a login page cannot rank anyway - search engines largely
+ * de-index auth walls - so being indexed buys nothing and advertises the panel
+ * to every scanner on the internet.
+ *
+ * robots.txt stops well-behaved crawlers but is only a hint, and it is not
+ * even read for a page when a noindex header is present, so both are sent. The
+ * header is the part that actually matters: it applies to every response,
+ * including error pages and anything served straight from express.static. */
+app.use((req, res, next) => {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('X-Frame-Options', 'DENY');
+  next();
+});
+
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send('User-agent: *\nDisallow: /\n');
+});
+
+/* Static assets are replaced when the panel is updated, not per request, so
+ * they can be cached hard. index:false keeps directory listing off. */
+app.use(express.static(path.join(__dirname, 'public'), {
+  index: false,
+  maxAge: '7d',
+  etag: true
+}));
 
 /* ---------------------------- API -------------------------------- */
 const { requireAuth, requireAdmin } = auth;
