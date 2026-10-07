@@ -9,7 +9,24 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/style.css">
+<link rel="stylesheet" href="/css/theme-cpanel.css">
 <link rel="stylesheet" href="/css/upload.css">
+<script>
+/* Apply the saved theme before first paint.
+ *
+ * The authoritative value is a per-account preference fetched by app.js, which
+ * is far too late: the page would paint dark and then repaint in the chosen
+ * theme, which is a visible flash on every load. localStorage carries the same
+ * value as a cache purely so this inline script can set the attribute in time;
+ * app.js reconciles it against the server and overwrites the cache afterwards,
+ * so signing in on a second device still gets the right theme. */
+(function () {
+  try {
+    var t = localStorage.getItem('letzcontrol.theme');
+    if (t === 'cpanel' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+  } catch (e) { /* private mode: the default theme is fine */ }
+})();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.8.1/dist/socket.io.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>

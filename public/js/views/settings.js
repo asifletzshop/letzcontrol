@@ -59,6 +59,75 @@ window.SettingsView = (() => {
     );
   }
 
+  /* ------------------------------- theme ------------------------------- */
+  /* Live preview: clicking a swatch repaints the whole panel straight away, and
+   * the choice is only written to the account when Save is pressed. Cancelling
+   * puts the saved theme back. */
+  const THEMES = [
+    {
+      id: 'dark',
+      name: 'Midnight',
+      desc: 'The default dark interface, with layered surfaces and soft depth.',
+      swatch: ['#070b14', '#0f1729', '#34d399', '#22d3ee']
+    },
+    {
+      id: 'cpanel',
+      name: 'cPanel',
+      desc: 'Light interface in the cPanel style: slate header, icon grid, blue links.',
+      swatch: ['#3a4a5a', '#ffffff', '#0b6fb8', '#eceff3']
+    }
+  ];
+
+  function themeCard(state, current) {
+    let picked = (window.__panelTheme && window.__panelTheme.current()) || 'dark';
+    const grid = ui.el('div', { class: 'theme-grid' });
+    const buttons = {};
+
+    const paint = () => {
+      for (const [id, b] of Object.entries(buttons)) b.classList.toggle('active', id === picked);
+      if (window.__panelTheme) window.__panelTheme.apply(picked);
+    };
+
+    for (const t of THEMES) {
+      const sw = ui.el('span', { class: 'theme-swatch' });
+      for (const c of t.swatch) ui.el('i').style.background = c, sw.appendChild(ui.el('i'));
+      const b = ui.el('button', { class: 'theme-opt', type: 'button', 'data-theme-id': t.id },
+        sw,
+        ui.el('span', { class: 'theme-name' }, t.name),
+        ui.el('span', { class: 'theme-desc' }, t.desc));
+      b.onclick = () => { picked = t.id; paint(); };
+      buttons[t.id] = b;
+      grid.appendChild(b);
+    }
+    paint();
+
+    const save = ui.el('button', { class: 'btn btn-primary' }, 'Save theme');
+    save.onclick = async () => {
+      save.disabled = true;
+      try {
+        await api.put('/settings/prefs', { theme: picked });
+        ui.toast(`Theme saved: ${picked === 'cpanel' ? 'cPanel' : 'Midnight'}`);
+        state.reload();
+      } catch (e) { ui.toast(e.message, true); }
+      save.disabled = false;
+    };
+
+    const reset = ui.el('button', { class: 'btn' }, 'Cancel');
+    reset.onclick = () => {
+      picked = current || 'dark';
+      paint();
+      state.reload();
+    };
+
+    return ui.el('div', { class: 'card' },
+      ui.el('h3', {}, 'Theme'),
+      ui.el('p', { class: 'text-dim', style: 'margin-top:-6px' },
+        'Changes the look of the panel for your account only. Click a theme to try it, then save.'),
+      grid,
+      ui.el('div', { class: 'modal-actions', style: 'justify-content:flex-start' }, save, reset)
+    );
+  }
+
   /* --------------------------- preferences ---------------------------- */
   function prefsCard(data) {
     const inputs = {};
@@ -596,6 +665,7 @@ window.SettingsView = (() => {
 
     root.appendChild(accountCard(me, state));
     root.appendChild(prefsCard(data));
+    root.appendChild(themeCard(state, (data.prefs && data.prefs.theme) || 'dark'));
     if (isAdmin) {
       root.appendChild(domainCard(state));
       root.appendChild(portCard(state));

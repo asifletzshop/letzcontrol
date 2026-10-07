@@ -31,20 +31,42 @@ window.DashboardView = (() => {
     meter.firstElementChild.style.width = Math.min(100, pct) + '%';
   }
 
+  /* Chart colours come from the CSS custom properties rather than literals. They
+   used to be hardcoded to a light grey, which is right on the dark theme and
+   close to invisible on the light one. */
+  function chartColors() {
+    const cs = getComputedStyle(document.documentElement);
+    return {
+      tick: (cs.getPropertyValue('--text-dim') || '#93a3bd').trim(),
+      grid: (cs.getPropertyValue('--border') || 'rgba(148,163,184,.1)').trim()
+    };
+  }
+
   function makeChart(ctx, label, color) {
+    const c = chartColors();
     return new Chart(ctx, {
       type: 'line',
       data: { labels: [], datasets: [{ label, data: [], borderColor: color, backgroundColor: color + '22', fill: true, tension: 0.35, pointRadius: 0 }] },
       options: {
         responsive: true, maintainAspectRatio: false, animation: false,
         scales: {
-          y: { min: 0, max: 100, ticks: { color: '#93a3bd' }, grid: { color: 'rgba(148,163,184,.1)' } },
+          y: { min: 0, max: 100, ticks: { color: c.tick }, grid: { color: c.grid } },
           x: { display: false }
         },
-        plugins: { legend: { labels: { color: '#93a3bd' } } }
+        plugins: { legend: { labels: { color: c.tick } } }
       }
     });
   }
+
+  /* Rebuild the charts when the theme changes, otherwise they keep the colours
+   * they were created with and stay unreadable after a switch. */
+  window.addEventListener('panel:theme', () => {
+    if (!cpuChart || !ramChart) return;
+    cpuChart.destroy();
+    ramChart.destroy();
+    cpuChart = makeChart(el('cpuChart'), 'CPU %', '#34d399');
+    ramChart = makeChart(el('ramChart'), 'RAM %', '#22d3ee');
+  });
 
   function pushPoint(chart, label, value) {
     chart.data.labels.push(label);
@@ -118,6 +140,36 @@ window.DashboardView = (() => {
         ui.el('thead', {}, ui.el('tr', {},
           ui.el('th', {}, 'Service'), ui.el('th', {}, 'State'))),
         body)));
+  }
+
+  /* --------------------- cPanel applications grid -------------------- */
+  /* cPanel's home screen is a grid of icon tiles, and recolouring the panel
+   * without one leaves it looking like cPanel in name only. Built from the same
+   * NAV data the sidebar uses, so it can never list a module this account
+   * cannot actually open, and it is only added under the cPanel theme - the
+   * default dashboard keeps its own layout. */
+  function isCpanel() {
+    return (window.__panelTheme && window.__panelTheme.current()) === 'cpanel';
+  }
+
+  function cpanelApps(me) {
+    const nav = (window.__panelNav && window.__panelNav()) || null;
+    if (!nav) return null;
+    const items = nav.filter((n) => n.id !== 'dashboard' && n.id !== 'mydashboard');
+
+    const grid = ui.el('div', { class: 'cp-apps' });
+    for (const n of items) {
+      const b = ui.el('button', { class: 'cp-app', type: 'button' },
+        ui.el('span', { class: 'cp-app-ico' }, n.icon),
+        ui.el('span', { class: 'cp-app-body' },
+          ui.el('span', { class: 'cp-app-title' }, n.label),
+          ui.el('span', { class: 'cp-app-desc' }, n.sub || '')));
+      b.onclick = () => { location.hash = '#/' + n.id; };
+      grid.appendChild(b);
+    }
+    return ui.el('div', {},
+      ui.el('div', { class: 'cp-section-title' }, 'Applications'),
+      grid);
   }
 
   /* --------------------- movable layout (per user) ------------------- */
@@ -305,6 +357,14 @@ window.DashboardView = (() => {
       block('services', keyCard),
       block('system', ui.el('div', { class: 'grid cols-2' }, sysCard, stackCard))
     );
+
+    /* cPanel's icon grid leads the page, above the metrics, which is where
+     * cPanel puts it. Not a movable block: it is the theme's identity rather
+     * than one of the dashboard's widgets. */
+    if (isCpanel()) {
+      const apps = cpanelApps(me);
+      if (apps) layout.insertBefore(apps, layout.firstChild);
+    }
 
     root.append(layout, layoutBar);
 

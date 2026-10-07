@@ -73,6 +73,29 @@
     return true;
   });
 
+  /* ----------------------------- theme ------------------------------- */
+  const THEMES = ['dark', 'cpanel'];
+  const THEME_KEY = 'letzcontrol.theme';
+
+  /** Apply a theme id to <html>, which is what every rule in
+   *  css/theme-cpanel.css is scoped to, and mirror it into localStorage for
+   *  the inline pre-paint script in index.html. */
+  function applyTheme(theme) {
+    const t = THEMES.includes(theme) ? theme : 'dark';
+    const changed = document.documentElement.getAttribute('data-theme') !== t;
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem(THEME_KEY, t); } catch { /* private mode */ }
+    window.__letzTheme = t;
+    /* Views that draw their own canvas (the dashboard charts) hold colours they
+     * read at creation time, so tell them only when something actually changed
+     * - this also runs once during boot, before any view exists. */
+    if (changed) window.dispatchEvent(new CustomEvent('panel:theme', { detail: t }));
+    return t;
+  }
+  applyTheme((() => {
+    try { return localStorage.getItem(THEME_KEY); } catch { return null; }
+  })());
+
   /* Two dashboards, one per audience. An admin opening "/" gets the machine -
    * CPU, memory, services. A customer must not, so they land on a page built
    * only from their own sites, databases and plan. Route "/" and an explicit
@@ -295,11 +318,27 @@
     else if (e.key === 'Escape' && paletteOpen) closePalette();
   });
 
+  window.__panelTheme = { apply: applyTheme, list: THEMES, current: () => window.__letzTheme || 'dark' };
+
+  /* The dashboard's cPanel application grid reads the sidebar's already
+   * filtered list from here rather than keeping its own copy, so a module can
+   * never appear as a tile for an account that cannot open it - the role and
+   * hidden-wizard rules are applied in exactly one place. */
+  window.__panelNav = () => visibleNav();
+
   window.addEventListener('hashchange', route);
   /* Resolve the setup state BEFORE the first paint, otherwise the wizard shows
    * in the sidebar for a frame and then vanishes. */
   (async () => {
     await refreshSetupVisibility();
+    /* The saved theme is a per-account preference, so it can only be known
+     * after login. Applying it here rather than in Settings keeps every page
+     * consistent, and the inline script in index.html already avoided a dark
+     * flash while this request was in flight. */
+    try {
+      const s = await api.get('/settings');
+      applyTheme(s.prefs && s.prefs.theme);
+    } catch { /* keep the cached theme */ }
     route();
   })();
 })();
