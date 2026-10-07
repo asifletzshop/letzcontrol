@@ -178,7 +178,11 @@ window.DashboardView = (() => {
    * inherits the other's layout. Blocks the browser does not know about (an
    * older stored order, or a block added in a later release) are ignored
    * rather than rendered empty. */
-  const DEFAULT_ORDER = ['stats', 'quick', 'charts', 'services', 'system'];
+  /* Key services now lives inside the charts grid, so the separate 'services'
+   block is gone. An old saved order may still list it; applyOrder ignores ids
+   it does not recognise and appends the blocks it does have, so a stale entry
+   costs nothing and the card still shows up with the charts. */
+const DEFAULT_ORDER = ['stats', 'quick', 'charts', 'system'];
 
   function block(id, node) {
     const w = ui.el('div', { 'data-block': id, class: 'dash-block' });
@@ -290,10 +294,25 @@ window.DashboardView = (() => {
     const actionsCard = ui.el('div', { class: 'card' },
       ui.el('h3', {}, 'Quick actions'), actions);
 
-    /* ---------- charts ---------- */
-    const charts = ui.el('div', { class: 'grid cols-2' },
-      ui.el('div', { class: 'card' }, ui.el('h3', {}, 'CPU % (live)'), ui.el('div', { class: 'chart-box' }, ui.el('canvas', { id: 'cpuChart' }))),
-      ui.el('div', { class: 'card' }, ui.el('h3', {}, 'Memory % (live)'), ui.el('div', { class: 'chart-box' }, ui.el('canvas', { id: 'ramChart' })))
+    /* ---------- charts + key services ----------
+     * These three share one grid so they come out exactly the same size. Key
+     * services used to be a full-width card of its own below the charts, which
+     * made it twice as wide as the CPU chart next to it and taller as well. */
+    const keyCard = ui.el('div', { class: 'card card-fill' },
+      ui.el('h3', {}, 'Key services'),
+      ui.el('p', { class: 'text-dim', style: 'margin:-4px 0 10px;font-size:12px' },
+        'The six that matter most. Manage all of them under Services.'),
+      ui.el('div', { class: 'key-svc-box', id: 'keySvcBox' },
+        ui.el('span', { class: 'text-dim' }, 'Checking…')));
+
+    const charts = ui.el('div', { class: 'grid cols-3' },
+      ui.el('div', { class: 'card card-fill' },
+        ui.el('h3', {}, 'CPU % (live)'),
+        ui.el('div', { class: 'chart-box grow' }, ui.el('canvas', { id: 'cpuChart' }))),
+      ui.el('div', { class: 'card card-fill' },
+        ui.el('h3', {}, 'Memory % (live)'),
+        ui.el('div', { class: 'chart-box grow' }, ui.el('canvas', { id: 'ramChart' }))),
+      keyCard
     );
 
     /* ---------- system + hosting + services ---------- */
@@ -325,12 +344,6 @@ window.DashboardView = (() => {
       ui.el('div', { class: 'health-strip', id: 'healthStrip' }, ui.el('span', { class: 'health-pill' }, 'Checking…'))
     );
 
-    const keyCard = ui.el('div', { class: 'card' },
-      ui.el('h3', {}, 'Key services'),
-      ui.el('p', { class: 'text-dim', style: 'margin:-4px 0 10px;font-size:12px' },
-        'The six that matter most. Manage all of them under Services.'),
-      ui.el('div', { id: 'keySvcBox' }, ui.el('span', { class: 'text-dim' }, 'Checking…')));
-
     const layout = ui.el('div', { id: 'dashLayout' });
 
     const reset = ui.el('button', { class: 'btn btn-sm', title: 'Put the blocks back in their default order' }, '↺ Reset layout');
@@ -354,7 +367,6 @@ window.DashboardView = (() => {
       block('stats', cards),
       block('quick', actionsCard),
       block('charts', charts),
-      block('services', keyCard),
       block('system', ui.el('div', { class: 'grid cols-2' }, sysCard, stackCard))
     );
 
@@ -369,7 +381,7 @@ window.DashboardView = (() => {
     root.append(layout, layoutBar);
 
     /* Give every block a grip, then restore this account's saved order. */
-    const LABELS = { stats: 'Server stats', quick: 'Quick actions', charts: 'Live charts', services: 'Key services', system: 'System and hosting' };
+    const LABELS = { stats: 'Server stats', quick: 'Quick actions', charts: 'Live charts and key services', system: 'System and hosting' };
     for (const w of layout.querySelectorAll(':scope > [data-block]')) {
       addGrip(w, LABELS[w.dataset.block] || w.dataset.block);
     }

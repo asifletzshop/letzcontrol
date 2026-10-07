@@ -149,6 +149,25 @@ kbd {
 .grid { display: grid; gap: 16px; }
 .grid.cols-4 { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 .grid.cols-2 { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
+/* Three across for the row holding the two live charts and Key services, so
+ * all three come out exactly the same size instead of the services card
+ * spanning the full width below the charts. */
+.grid.cols-3 { grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
+
+/* A card that fills the height of its grid row. The charts and the services
+ * table have very different natural heights; making them all stretch keeps the
+ * row tidy and the three boxes identical. */
+.card-fill { display: flex; flex-direction: column; min-height: 0; }
+/* `height: auto` is needed: .chart-box sets a fixed 220px further down, and
+   without overriding it here the chart would never grow past that. */
+.card-fill .chart-box.grow { flex: 1 1 auto; height: auto; min-height: 220px; }
+
+/* Key services: let the table take the spare height and scroll only if a box
+ * ever has to show more than the six it is capped at, so the card cannot grow
+ * past its neighbours. */
+.key-svc-box { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.card-fill table { width: 100%; }
+.card-fill th, .card-fill td { padding: 9px 12px; }
 
 /* ---------- customer dashboard ---------- */
 /* The greeting panel for a hosting customer. Deliberately unlike the admin
