@@ -145,6 +145,38 @@ kbd {
 .content.page-enter { animation: fadeUp .28s cubic-bezier(.2, .7, .3, 1); }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
+/* ---------- node.js wizard ---------- */
+.steps { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+.steps .step {
+  font-size: 12px; padding: 5px 11px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--text-dim);
+}
+.steps .step.active {
+  border-color: var(--accent); color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  font-weight: 600;
+}
+.radio-list { display: grid; gap: 8px; }
+.radio-card {
+  display: flex; gap: 11px; align-items: flex-start; cursor: pointer;
+  padding: 12px 13px; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); background: var(--bg-card);
+  transition: border-color .15s, background .15s;
+}
+.radio-card:hover { border-color: var(--accent); }
+.radio-card.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.radio-dot {
+  flex: none; width: 16px; height: 16px; margin-top: 2px; border-radius: 50%;
+  border: 2px solid var(--border-strong); background: transparent;
+}
+.radio-card.active .radio-dot {
+  border-color: var(--accent);
+  background: radial-gradient(circle, var(--accent) 0 45%, transparent 46%);
+}
+.field { display: block; margin-bottom: 10px; }
+.field > span:first-child { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 4px; }
+.field input, .field select, .field textarea { width: 100%; }
+
 /* ---------- cards / grid ---------- */
 .grid { display: grid; gap: 16px; }
 .grid.cols-4 { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }

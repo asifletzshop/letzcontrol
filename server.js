@@ -33,9 +33,13 @@ const addons = require('./lib/addons');
 const settings = require('./lib/settings');
 const panelsettings = require('./lib/panelsettings');
 const updates = require('./lib/updates');
+const nodeapps = require('./lib/nodeapps');
 
 users.ensureSeedPlans();
 users.ensureAdmin();
+/* Record the real port each existing Node app listens on, before anything can
+ * regenerate a vhost from config and repoint one app at another. */
+sites.migrateAppPorts().catch((e) => console.error('[letzControl] app port migration:', e.message));
 
 const app = express();
 const server = http.createServer(app);
@@ -103,6 +107,7 @@ app.use('/api/settings', requireAuth, settings.router);
 // siteowner reaching this mount still gets 403 rather than a half-answer.
 app.use('/api/settings', requireAuth, panelsettings.router);
 app.use('/api/updates', requireAuth, updates.router);
+app.use('/api/node-apps', requireAuth, nodeapps.router);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, name: 'letzControl' }));
 

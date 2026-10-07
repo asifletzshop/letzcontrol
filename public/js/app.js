@@ -24,6 +24,8 @@
     { id: 'docker', icon: '🐳', label: 'Docker', group: 'Server', sub: 'Containers, images and compose stacks', view: DockerView, admin: true },
     { id: 'cron', icon: '⏰', label: 'Cron Jobs', group: 'Server', sub: 'Scheduled tasks on the server', view: CronView, admin: true },
     { id: 'addons', icon: '🧱', label: 'Addons', group: 'Server', sub: 'Install and manage Redis, Varnish, FTP, antivirus, and more', view: AddonsView, admin: true },
+    { id: 'nodeapps', icon: '🟩', label: 'Node.js Apps', group: 'Server', sub: 'Create and manage Node.js websites with a wizard', view: NodeAppsView, admin: true },
+    { id: 'nodewizard', icon: '🪄', label: 'New Node.js site', group: 'Server', sub: 'Wizard for a Node.js website', view: NodeWizardView, admin: true, hidden: true },
     { id: 'terminal', icon: '💻', label: 'Terminal', group: 'Server', sub: 'Web shell session', view: TerminalView, admin: true },
     { id: 'setup', icon: '🧩', label: 'Setup Wizard', group: 'Advanced', sub: 'Guided installation of the hosting stack', view: SetupView, admin: true },
     { id: 'users', icon: '👥', label: 'Users & Plans', group: 'Advanced', sub: 'Panel accounts, roles and quotas', view: UsersView, admin: true },
@@ -64,6 +66,7 @@
   let setupChecked = false;
 
   const visibleNav = () => NAV.filter((n) => {
+    if (n.hidden) return false;
     if (n.admin && me.role !== 'admin') return false;
     /* Exactly one dashboard per audience: the machine one is the admin's, the
      * customer's is built from their own sites and databases. */
