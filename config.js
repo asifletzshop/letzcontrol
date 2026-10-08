@@ -55,6 +55,14 @@ const defaults = {
   // Directories the file manager is allowed to touch
   fileManagerRoots: ['/'],
 
+  /* Addresses allowed to reach the admin tools (webmail on :2088, phpMyAdmin on
+   * :2089). They sit on a fixed port and get scanned within minutes of being
+   * exposed, so the default is localhost only. Plain addresses or CIDR, e.g.
+   * ['203.0.113.7', '198.51.100.0/24']. Only consulted when
+   * /etc/nginx/snippets/admins-allow.conf does not already exist - an existing
+   * file is never overwritten, so hand-edits are safe. */
+  adminTools: { allowedCidrs: [] },
+
   // Where in-place panel updates are fetched from (owner/name). Point this at
   // your own fork if you are not running asifletzshop/letzcontrol.
   githubRepo: 'asifletzshop/letzcontrol'
