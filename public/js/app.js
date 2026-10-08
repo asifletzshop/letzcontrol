@@ -10,7 +10,7 @@
   }
 
   const NAV = [
-    { id: 'dashboard', icon: '📊', label: 'Dashboard', group: 'Overview', sub: 'Live server metrics, services and quick actions', view: DashboardView, hideForNonAdmin: true },
+    { id: 'dashboard', icon: '📊', label: 'Dashboard', group: 'Overview', view: DashboardView, hideForNonAdmin: true },
     { id: 'mydashboard', icon: '🏠', label: 'My hosting', group: 'Overview', sub: 'Your plan, websites and databases', view: UserDashboardView, hideForAdmin: true },
     { id: 'sites', icon: '🌐', label: 'Websites', group: 'Hosting', sub: 'Create and manage sites, backends and SSL', view: SitesView },
     { id: 'dns', icon: '🛰️', label: 'DNS', group: 'Hosting', sub: 'Zone records per website', view: DnsView },
@@ -166,7 +166,11 @@
     if (activeView && activeView.destroy) { try { activeView.destroy(); } catch { /* noop */ } }
     activeView = item.view;
     titleEl.textContent = item.label;
+    /* Hide the subtitle element when a page has none. Leaving it visible with
+     * empty content keeps a line of font metrics under the title, so removing
+     * a description would otherwise open a small gap in the header. */
     subEl.textContent = item.sub || '';
+    subEl.hidden = !item.sub;
     contentEl.innerHTML = '';
     contentEl.classList.remove('page-enter');
     void contentEl.offsetWidth; /* restart animation */
