@@ -347,6 +347,42 @@ const DEFAULT_ORDER = ['stats', 'quick', 'band'];
 
     const layout = ui.el('div', { id: 'dashLayout' });
 
+    /* Where this panel is actually reachable from, above everything else.
+     *
+     * Worth having on the dashboard because the one thing you cannot do from
+     * inside the panel is guess the address you are currently using: if it is
+     * only on an IP and port, that address is the only way back in if something
+     * goes wrong, and it is otherwise buried in Settings. Not a movable block -
+     * it is context for the page, not one of the widgets - so it sits outside
+     * the drag-and-drop area and cannot be dragged out of position. */
+    const whereami = ui.el('div', { id: 'dashWhereami', style: 'margin-bottom:14px' });
+    root.appendChild(whereami);
+    api.get('/settings/panel').then((p) => {
+      const scheme = p.ssl ? 'https' : 'http';
+      const addr = p.domain
+        ? `${scheme}://${p.domain}`
+        : `${scheme}://${location.hostname}:${p.port}`;
+      const notes = [];
+      if (p.domain && p.sslRequested && !p.ssl) notes.push('SSL certificate not issued yet');
+      else if (!p.domain) notes.push('no domain set — reachable by IP only');
+      if (p.domain && p.dnsHint && /^no\b/.test(p.dnsHint)) notes.push(`DNS does not point here (${p.dnsHint})`);
+
+      whereami.appendChild(ui.el('div', { class: 'card', style: 'padding:10px 14px' },
+        ui.el('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap' },
+          ui.el('span', { title: 'How to reach this panel' }, '🌐'),
+          ui.el('strong', { class: 'mono', style: 'font-size:13px' }, addr),
+          p.ssl ? ui.badge('https', 'green') : ui.badge('no tls', 'yellow'),
+          notes.length ? ui.el('span', { class: 'text-dim', style: 'font-size:12px' }, notes.join(' · ')) : null,
+          ui.el('a', {
+            href: '#/settings', class: 'btn btn-sm',
+            style: 'margin-left:auto;text-decoration:none'
+          }, 'Settings'))));
+    }).catch(() => {
+      /* Non-admin, or the panel endpoint is unavailable: say nothing rather
+       * than showing an empty strip above the dashboard. */
+      whereami.remove();
+    });
+
     const reset = ui.el('button', { class: 'btn btn-sm', title: 'Put the blocks back in their default order' }, '↺ Reset layout');
     reset.onclick = async () => {
       try {
