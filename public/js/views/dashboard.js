@@ -184,6 +184,20 @@ window.DashboardView = (() => {
    recognise, so that costs nothing and the band still renders. */
 const DEFAULT_ORDER = ['stats', 'quick', 'band'];
 
+  /* Removed from the dashboard at the operator's request.
+   *
+   * Flipping either flag back on restores the block, and everything that fed it
+   * is still here - the builders, the chart setup and the services fetch are all
+   * skipped by these same flags rather than deleted, so putting it back is a
+   * one-line change rather than a reconstruction.
+   *
+   * They are flags rather than deletions because half of this file hangs off
+   * them: the charts are built from canvases inside the band, and both
+   * makeChart() and pushPoint() throw on a null context, so removing the markup
+   * without guarding the runtime breaks every dashboard load. */
+  const SHOW_QUICK_ACTIONS = false;
+  const SHOW_METRICS_BAND = false;
+
   function block(id, node) {
     const w = ui.el('div', { 'data-block': id, class: 'dash-block' });
     w.appendChild(node);
@@ -400,11 +414,9 @@ const DEFAULT_ORDER = ['stats', 'quick', 'band'];
         'Drag the ⠿ handle on any block to rearrange your dashboard'),
       reset);
 
-    layout.append(
-      block('stats', cards),
-      block('quick', actionsCard),
-      block('band', band)
-    );
+    layout.append(block('stats', cards));
+    if (SHOW_QUICK_ACTIONS) layout.append(block('quick', actionsCard));
+    if (SHOW_METRICS_BAND) layout.append(block('band', band));
 
     /* cPanel's icon grid leads the page, above the metrics, which is where
      * cPanel puts it. Not a movable block: it is the theme's identity rather
@@ -438,8 +450,12 @@ const DEFAULT_ORDER = ['stats', 'quick', 'band'];
       UpdatesView.banner(me).then((b) => { if (b) root.insertBefore(b, layout); });
     }
 
-    cpuChart = makeChart(el('cpuChart'), 'CPU %', '#34d399');
-    ramChart = makeChart(el('ramChart'), 'RAM %', '#22d3ee');
+    /* Only when the band is actually on the page: the canvases live inside it,
+     * and new Chart(null) throws. */
+    if (SHOW_METRICS_BAND) {
+      cpuChart = makeChart(el('cpuChart'), 'CPU %', '#34d399');
+      ramChart = makeChart(el('ramChart'), 'RAM %', '#22d3ee');
+    }
 
     const apply = (d) => {
       setStat('cpu', d.cpu + '%', `load ${d.loadavg}`, d.cpu);
@@ -460,15 +476,23 @@ const DEFAULT_ORDER = ['stats', 'quick', 'band'];
       put('sysMem', d.memTotal ? `${ui.fmtBytes(d.memUsed)} / ${ui.fmtBytes(d.memTotal)} (${d.memPct}%)` : '–');
       put('sysSwap', fmtSwap(d));
       const t = new Date(d.ts).toLocaleTimeString();
-      pushPoint(cpuChart, t, d.cpu);
-      pushPoint(ramChart, t, d.memPct);
+      if (SHOW_METRICS_BAND) {
+        pushPoint(cpuChart, t, d.cpu);
+        pushPoint(ramChart, t, d.memPct);
+      }
     };
     apply(info.live);
 
     socket = io('/stats');
     socket.on('stats', apply);
 
-    /* ---------- async enrichment (services) ---------- */
+    /* ---------- async enrichment (services) ----------
+     * Skipped entirely when the band is off the page. Key services only had
+     * somewhere to render inside the band, and renderKey() writes into the box
+     * unguarded - so asking for the list would fetch six services and six
+     * button rows for a container that is not on the page. */
+    if (!SHOW_METRICS_BAND) return;
+
     Promise.allSettled([
       api.get('/services'),
       api.get('/services/key')
