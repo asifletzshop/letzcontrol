@@ -284,7 +284,16 @@ window.SettingsView = (() => {
       try {
         info = await api.get('/settings/panel');
         port.value = info.port;
-        current.textContent = `The panel is listening on port ${info.port}.`;
+        /* Say which protocols the port speaks, and for how long the https one
+         * has left - a short-lived certificate is only safe to ignore while
+         * something is still renewing it. */
+        current.textContent = `The panel is listening on port ${info.port}`
+          + (info.https && info.https.on
+            ? `, and on https. The certificate is valid until ${info.https.validUntil}`
+              + (info.https.daysLeft <= 1
+                ? ' - renewal is due, check the log if it is not renewed.'
+                : ` (${info.https.daysLeft} days left).`)
+            : ', over plain HTTP only.');
       } catch (e) { current.textContent = e.message; }
       try {
         const p = await api.get('/settings/panel/ports');
