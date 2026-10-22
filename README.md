@@ -76,6 +76,23 @@ Re-run the install command. It backs up `data/` and `config.json` to
 `/root/letzcontrol-backup-<timestamp>/`, replaces the code and restarts.
 Your sites, mailboxes, databases, users and admin password are preserved.
 
+**From the panel:** *Advanced → Updates* compares the installed version with
+the one in `package.json` on the repository's default branch and offers a
+button to update in place. It is deliberately not automatic — this panel
+runs as root with a web terminal, so silently replacing its own code on a
+timer is a bad idea even when it is your own repository. A bad push would
+take every install down at once, with nobody watching. So: detect, tell
+you, let you press the button, and back up before touching anything.
+
+**The version moves on every push.** This project ships by pushing to a
+branch rather than by cutting releases, so a workflow bumps `package.json`,
+commits it, tags it and publishes a release for it. That is what lets an
+install know there is something new for it: without it the version would sit
+still and every install would report itself up to date forever. Patch
+releases by default — a panel update is something people apply from an
+existing install, and a surprise major version is not a kindness. Run the
+*Bump version* workflow by hand to choose minor or major.
+
 ---
 
 ## ✨ Features
@@ -218,6 +235,13 @@ has switches for NTP and an immediate re-sync. Note that PHP keeps its own
   per IP).
 - Non-admin (`user` role) accounts are scoped to their own websites and
   databases, and capped by their plan.
+- The webmail (`:2088`) and phpMyAdmin (`:2089`) are open to the whole
+  internet and are scanned within minutes, so nginx restricts them to the
+  addresses that administer the box; everyone else gets a 403. The list is
+  in *Settings → Webmail & phpMyAdmin access*, which also shows the address
+  the panel sees you arriving from and offers to add it — an operator's own
+  address is often a dynamic one, and the only symptom of a stale list is a
+  403 from a tool you are allowed to use.
 - Put the panel behind Nginx with TLS and set `"host": "127.0.0.1"` so it is not
   reachable directly.
 
@@ -251,6 +275,7 @@ server {
 npm install
 npm run dev        # auto-reload
 npm start          # production
+npm run bump-version   # move the version in package.json (patch by default)
 ```
 
 ```
