@@ -28,6 +28,7 @@ const dns = require('./lib/dns');
 const wordpress = require('./lib/wordpress');
 const mail = require('./lib/mail');
 const webmail = require('./lib/webmail');
+const porttls = require('./lib/porttls');
 const front = require('./lib/front');
 const { run } = require('./lib/exec');
 const terminal = require('./lib/terminal');
@@ -51,11 +52,18 @@ sites.migrateAppPorts().catch((e) => console.error('[letzControl] app port migra
  * was down is not simply lost - but only reload nginx when it actually
  * differs, because a reload on every start for nothing is noise. */
 webmail.syncPortVhost()
-  .then(async (r) => {
-    if (!r.changed) return;
+  .then(async (access) => {
+    /* The same start is the moment to bring the admin-tool ports (:2088
+     * webmail, :2089 phpMyAdmin) in step with the panel's own certificate, so
+     * https://<server>:2088 answers the same way the panel's own https does -
+     * and comes off the ports again by itself if the certificate goes, rather
+     * than leaving nginx pointing at a file that is not there. Both kinds of
+     * change share one reload: they are checked together below anyway. */
+    const tls = await porttls.syncAdminTls();
+    if (!access.changed && !tls.changed) return;
     const check = await run('nginx -t');
     if (check.ok) await run('systemctl reload nginx');
-    else console.error('[letzControl] webmail access was updated but nginx refused it:', check.stderr);
+    else console.error('[letzControl] webmail access / admin-tool https was updated but nginx refused it:', check.stderr);
   })
   .catch((e) => console.error('[letzControl] webmail access sync:', e.message));
 

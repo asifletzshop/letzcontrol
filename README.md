@@ -252,14 +252,44 @@ An IP certificate, with [acme.sh](https://github.com/acmesh-official/acme.sh)
 acme.sh --issue --cert-profile shortlived --days 3 -d 1.2.3.4 --webroot /var/www/html
 acme.sh --install-cert -d 1.2.3.4 --ecc \
   --fullchain-file /etc/letsencrypt/panel-ip/fullchain.pem \
-  --key-file      /etc/letsencrypt/panel-ip/privkey.pem
+  --key-file      /etc/letsencrypt/panel-ip/privkey.pem \
+  --reloadcmd     'systemctl reload nginx'
 ```
+
+The same two files also serve **https on the admin-tool ports** (*Admin-tool
+ports over https*), and nginx does not re-read a certificate on its own — so
+the `--reloadcmd` is what carries a renewal to it. The panel needs nothing: it
+re-reads its own copy once a minute.
 
 The files are re-read once a minute, so a renewal takes effect on its own — no
 restart, no dropped session, and never a moment of serving a stale or
 half-written certificate. If the files go missing or stop matching, the panel
 keeps serving plain HTTP and says so in the log; the certificate is never
 allowed to take the panel down with it.
+
+### Admin-tool ports over https
+
+The webmail (`:2088`) and phpMyAdmin (`:2089`) get **https on their own ports**
+from the same certificate — it covers the server's address, and a certificate
+is valid on every port at once, so this needs no second certificate and no
+second renewal:
+
+```
+https://1.2.3.4:2088/    webmail
+https://1.2.3.4:2089/    phpMyAdmin
+```
+
+Plain HTTP stays on those ports beside https. The websites mount the webmail at
+`http://127.0.0.1:2088`, so turning that off would take the customers' webmail
+with it — one nginx server block with both listeners is what nginx is for. The
+allow-list applies to both: nginx checks it after the handshake, so an address
+that gets a 403 over http gets the same 403 over https.
+
+The panel puts both vhosts in step with `tls` on every start, and the Setup
+Wizard does the same just after it writes them. Nothing is written until the
+certificate files are really on disk — a vhost naming a certificate that has
+gone stops nginx from starting, which takes every site on the box with it — and
+if nginx ever refuses what was written, the file is put back exactly as it was.
 
 ### Server time
 
@@ -289,7 +319,9 @@ has switches for NTP and an immediate re-sync. Note that PHP keeps its own
   databases, and capped by their plan.
 - The webmail (`:2088`) and phpMyAdmin (`:2089`) are open to the whole
   internet and are scanned within minutes, so nginx restricts them to the
-  addresses that administer the box; everyone else gets a 403. The list is
+  addresses that administer the box; everyone else gets a 403, over **https**
+  as much as over http, because both are served on the same ports
+  (*Admin-tool ports over https*). The list is
   in *Settings → Webmail & phpMyAdmin access*, which also shows the address
   the panel sees you arriving from and offers to add it — an operator's own
   address is often a dynamic one, and the only symptom of a stale list is a
@@ -298,7 +330,8 @@ has switches for NTP and an immediate re-sync. Note that PHP keeps its own
   *Mail → Webmail over https* can open it to everyone with a mailbox while
   phpMyAdmin stays restricted — one choice, one vhost set, no way to open the
   database browser by accident. Two addresses are offered, and both are over
-  TLS, because a login form on plain HTTP is the thing to avoid:
+  TLS — as is the port itself — because a login form on plain HTTP is the thing
+  to avoid:
 
   | | needs | where to click |
   |---|---|---|
