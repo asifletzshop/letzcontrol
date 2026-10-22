@@ -684,75 +684,261 @@ input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 15
 }
 .tile-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ---------- container tiles (Docker page) ---------- */
-/* CasaOS's shape: one tile per container, the icon carrying the state dot in
- * its corner, and everything you can do to it behind a ⋮ in the corner -
- * the name, the image and what it is using are the only things in the open.
- * Clicking the tile itself is "show me everything" (the inspector). */
-.ctile-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
-.ctile {
+/* ---------- CasaOS-style Docker desktop ---------- */
+/* The Docker page is laid out as a small desktop rather than a stack of
+ * cards: a wallpaper with a clock and live system widgets along the top, a
+ * grid of app tiles in the middle, and a dock pinned to the bottom of the
+ * page. The panel around it is unchanged - this is only the content area. */
+.casa {
+  position: relative;
+  display: flex; flex-direction: column;
+  min-height: calc(100vh - 150px);
+  margin: -6px -6px -18px;
+  padding: 18px 18px 0;
+  border: 1px solid var(--border); border-radius: 18px;
+  overflow: hidden;
+  background:
+    radial-gradient(760px 380px at 12% -10%, rgba(34, 211, 238, .16), transparent 62%),
+    radial-gradient(680px 420px at 92% 4%, rgba(167, 139, 250, .14), transparent 60%),
+    radial-gradient(900px 500px at 50% 108%, rgba(52, 211, 153, .12), transparent 65%),
+    linear-gradient(180deg, #0b1226 0%, #080d1c 55%, #060a15 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05);
+}
+/* faint grid, like a desktop wallpaper rather than a plain gradient */
+.casa::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, .05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, .05) 1px, transparent 1px);
+  background-size: 46px 46px;
+  mask-image: radial-gradient(1000px 620px at 50% 30%, #000 30%, transparent 78%);
+}
+.casa > * { position: relative; z-index: 1; }
+
+/* --- top bar: clock, search, live widgets --- */
+.casa-top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.casa-clock { line-height: 1.15; min-width: 132px; }
+.casa-time { font-size: 30px; font-weight: 800; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.casa-date { font-size: 11.5px; color: var(--text-dim); font-weight: 600; }
+.casa-search {
+  width: 240px; padding: 9px 13px 9px 34px;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: rgba(255, 255, 255, .06) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2393a3bd' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E") no-repeat 12px 50%;
+  color: var(--text); font-family: inherit; font-size: 13px;
+  backdrop-filter: blur(8px);
+}
+.casa-search:focus { outline: none; border-color: var(--accent-2); box-shadow: 0 0 0 3px rgba(34, 211, 238, .16); }
+
+.casa-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.casa-chip {
+  min-width: 128px; padding: 8px 11px; border-radius: 12px;
+  background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .1);
+  backdrop-filter: blur(8px);
+}
+.cw-ico { margin-right: 6px; font-size: 12px; }
+.cw-label { font-size: 10.5px; color: var(--text-dim); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.cw-val {
+  display: block; margin-top: 3px;
+  font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cw-track { height: 4px; margin-top: 6px; border-radius: 3px; background: rgba(255, 255, 255, .12); overflow: hidden; }
+.cw-bar { display: block; height: 100%; width: 0; background: var(--grad-primary); transition: width .5s ease; }
+
+/* --- section header above each page --- */
+.casa-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.casa-head h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.casa-head .text-dim { font-size: 12.5px; }
+.casa-head .spacer, .tab-head .spacer { flex: 1; }
+
+.casa-body { flex: 1 1 auto; }
+
+/* --- the app grid --- */
+.casa-grid {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
+  align-content: start;
+}
+.casa-app {
   position: relative; display: flex; flex-direction: column; align-items: center;
-  padding: 18px 12px 14px; text-align: center; min-width: 0;
-  background: linear-gradient(180deg, rgba(255, 255, 255, .03), rgba(255, 255, 255, 0) 45%), var(--bg-card);
-  border: 1px solid var(--border); border-radius: 14px; cursor: pointer;
-  transition: transform .15s, border-color .15s, box-shadow .15s;
+  gap: 3px; padding: 14px 8px 12px; text-align: center; min-width: 0;
+  border: 1px solid transparent; border-radius: 16px; cursor: pointer;
+  background: rgba(255, 255, 255, .035);
+  transition: transform .16s, background .16s, border-color .16s, box-shadow .16s;
 }
-.ctile:hover {
-  transform: translateY(-3px); border-color: var(--border-strong); box-shadow: var(--shadow-2);
+.casa-app:hover {
+  background: rgba(255, 255, 255, .085); border-color: rgba(255, 255, 255, .16);
+  transform: translateY(-3px); box-shadow: 0 12px 28px rgba(2, 6, 23, .5);
 }
-.ctile:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(52, 211, 153, .3); }
-.ctile-icon {
-  position: relative; width: 56px; height: 56px; border-radius: 15px;
-  display: flex; align-items: center; justify-content: center; font-size: 26px;
-  background: var(--bg-elev); border: 1px solid var(--border); margin-bottom: 11px;
+.casa-app:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(52, 211, 153, .35); }
+.casa-ico {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  border-radius: 20px; margin-bottom: 8px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .03)),
+    var(--bg-elev);
+  border: 1px solid rgba(255, 255, 255, .1);
+  box-shadow: 0 8px 20px rgba(2, 6, 23, .4), inset 0 1px 0 rgba(255, 255, 255, .14);
+  filter: saturate(1.05);
 }
-/* A container with no known image gets its first letter on a colour picked
- * from the image name, so the same image always looks the same. */
-.ctile-icon.letter { border: none; color: #fff; font-weight: 800; font-size: 22px; }
-.ctile-dot {
-  position: absolute; right: -3px; bottom: -3px; width: 13px; height: 13px;
-  border-radius: 50%; background: var(--text-dim); border: 2.5px solid var(--bg-card);
+.casa-ico.letter { color: #fff; font-weight: 800; border: none; }
+.casa-ico.dashed {
+  background: transparent; border: 2px dashed var(--border-strong);
+  color: var(--text-dim); font-size: 30px !important; font-weight: 300;
+  box-shadow: none;
 }
-.ctile-dot.ok { background: var(--accent); box-shadow: 0 0 8px rgba(52, 211, 153, .55); }
-.ctile-dot.warn { background: var(--warn); box-shadow: 0 0 8px rgba(251, 191, 36, .5); }
-.ctile-name {
-  font-size: 13px; font-weight: 700; max-width: 100%;
+.casa-dot {
+  position: absolute; right: -4px; bottom: -4px; width: 15px; height: 15px;
+  border-radius: 50%; background: var(--text-dim); border: 3px solid #0a1020;
+}
+.casa-dot.ok { background: var(--accent); box-shadow: 0 0 9px rgba(52, 211, 153, .7); }
+.casa-dot.warn { background: var(--warn); box-shadow: 0 0 9px rgba(251, 191, 36, .6); }
+.casa-app-name {
+  font-size: 12.5px; font-weight: 700; max-width: 100%;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.ctile-sub, .ctile-meta {
-  font-size: 11px; color: var(--text-dim); margin-top: 3px; max-width: 100%;
+/* the image, small and mono, so a tile can be told apart from a container
+ * with the same name on a different tag */
+.casa-app-sub {
+  font-family: var(--mono); font-size: 10px; color: rgba(147, 163, 189, .75);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.casa-app-state, .casa-app-use {
+  font-size: 11px; color: var(--text-dim); max-width: 100%;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.ctile-sub { font-family: var(--mono); }
-.ctile-meta { margin-top: 2px; }
-.ctile-more {
-  position: absolute; top: 7px; right: 7px; width: 26px; height: 26px;
-  border-radius: 8px; border: 1px solid transparent; background: transparent;
-  color: var(--text-dim); font-size: 15px; line-height: 1; cursor: pointer;
+.casa-app-use { font-family: var(--mono); font-size: 10.5px; color: rgba(147, 163, 189, .8); }
+
+.casa-more {
+  position: absolute; top: 6px; right: 8px; width: 26px; height: 26px;
+  border-radius: 8px; border: 0; background: transparent;
+  color: var(--text-dim); font-size: 16px; line-height: 1; cursor: pointer;
   opacity: 0; transition: opacity .15s, background .15s, color .15s;
 }
-.ctile:hover .ctile-more, .ctile:focus-within .ctile-more, .ctile-more:focus-visible { opacity: 1; }
-.ctile-more:hover { background: var(--bg-hover); color: var(--text); border-color: var(--border-strong); }
-.ctile-menu {
-  display: none; position: absolute; top: 34px; right: 8px; z-index: 30;
-  min-width: 172px; padding: 5px; text-align: left;
+.casa-app:hover .casa-more, .casa-app:focus-within .casa-more, .casa-more:focus-visible { opacity: 1; }
+.casa-more:hover { background: rgba(255, 255, 255, .16); color: var(--text); }
+.casa-add { border-style: dashed; border-color: var(--border-strong); background: transparent; color: var(--text-dim); }
+.casa-add:hover { background: rgba(52, 211, 153, .08); border-color: rgba(52, 211, 153, .45); }
+.casa-add:hover .casa-ico.dashed { color: var(--accent); border-color: var(--accent); }
+@media (hover: none) { .casa-more { opacity: 1; } }
+
+/* --- the right-click menu --- */
+.casa-menu {
+  display: none; position: fixed; z-index: 70;
+  min-width: 186px; padding: 5px; text-align: left;
   background: var(--bg-elev); border: 1px solid var(--border-strong);
-  border-radius: 10px; box-shadow: var(--shadow-2);
+  border-radius: 11px; box-shadow: var(--shadow-3);
+  backdrop-filter: blur(14px);
 }
-.ctile-menu.open { display: block; }
-.ctile-menu button {
-  display: flex; width: 100%; align-items: center; gap: 8px; padding: 7px 10px;
+.casa-menu.open { display: block; }
+.casa-menu button {
+  display: flex; width: 100%; align-items: center; gap: 9px; padding: 8px 11px;
   border: 0; border-radius: 7px; background: transparent; color: var(--text);
   font-size: 12.5px; font-family: inherit; cursor: pointer; text-align: left;
 }
-.ctile-menu button:hover { background: var(--bg-hover); }
-.ctile-menu button.danger { color: #f87171; }
-.ctile-menu .msep { height: 1px; background: var(--border); margin: 4px 2px; }
-.ctile-add { border-style: dashed; color: var(--text-dim); justify-content: center; gap: 4px; }
-.ctile-add .plus { font-size: 28px; line-height: 1; }
-.ctile-add:hover .plus { color: var(--accent); }
-/* Touch devices never hover, so the corner button is always there. */
-@media (hover: none) { .ctile-more { opacity: 1; } }
+.casa-menu button:hover { background: var(--bg-hover); }
+.casa-menu button.danger { color: #f87171; }
+.casa-menu .msep { height: 1px; background: var(--border); margin: 4px 2px; }
+
+/* --- the dock --- */
+.casa-dock {
+  position: sticky; bottom: 0; z-index: 30;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  flex-wrap: wrap; margin: 22px -18px 0; padding: 9px 14px;
+  background: rgba(8, 13, 28, .82);
+  border-top: 1px solid rgba(255, 255, 255, .1);
+  backdrop-filter: blur(16px);
+}
+.dock-item {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-width: 62px; padding: 6px 8px;
+  border: 1px solid transparent; border-radius: 12px;
+  background: transparent; color: var(--text-dim);
+  font-family: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer;
+  transition: transform .14s, background .14s, color .14s;
+}
+.dock-item:hover { background: rgba(255, 255, 255, .1); color: var(--text); transform: translateY(-3px); }
+.dock-item:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(52, 211, 153, .35); }
+.dock-item.on { background: rgba(52, 211, 153, .14); border-color: rgba(52, 211, 153, .4); color: var(--accent); }
+.dock-ico { font-size: 19px; line-height: 1.2; }
+.dock-label { white-space: nowrap; }
+.dock-sep { width: 1px; align-self: stretch; margin: 4px 6px; background: var(--border); }
+
+/* --- the settings dialog's own tabs --- */
+.tabs { display: flex; gap: 16px; min-height: 320px; }
+.tab-list {
+  display: flex; flex-direction: column; gap: 3px; flex-shrink: 0;
+  width: 148px; padding-right: 14px; border-right: 1px solid var(--border);
+}
+.tab-item {
+  padding: 9px 11px; border: 1px solid transparent; border-radius: 9px;
+  background: transparent; color: var(--text-dim);
+  font-family: inherit; font-size: 12.5px; font-weight: 600;
+  text-align: left; cursor: pointer;
+  transition: background .14s, color .14s;
+}
+.tab-item:hover { background: var(--bg-hover); color: var(--text); }
+.tab-item.on { background: var(--bg-elev); border-color: var(--border-strong); color: var(--text); }
+.tab-panel { flex: 1; min-width: 0; }
+.tab-head {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+  font-size: 12.5px; font-weight: 700;
+}
+@media (max-width: 700px) {
+  .tabs { flex-direction: column; }
+  .tab-list { width: auto; flex-direction: row; flex-wrap: wrap;
+    padding-right: 0; padding-bottom: 12px; border-right: 0; border-bottom: 1px solid var(--border); }
+}
+
+/* --- in-container shell --- */
+.term-in {
+  width: 100%; margin-bottom: 8px; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--bg-card); color: var(--text);
+  font-family: var(--mono); font-size: 12.5px;
+}
+.term-in:focus { outline: none; border-color: var(--accent-2); }
+
+/* --- the store --- */
+.casa-store-head h3 { margin: 0 0 4px; font-size: 15px; font-weight: 700; }
+.casa-store-head p { margin: 0 0 14px; font-size: 12.5px; max-width: 74ch; }
+.casa-cats { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 16px; }
+.cat-chip {
+  padding: 6px 13px; border: 1px solid var(--border); border-radius: 999px;
+  background: rgba(255, 255, 255, .05); color: var(--text-dim);
+  font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: background .14s, color .14s, border-color .14s;
+}
+.cat-chip:hover { background: rgba(255, 255, 255, .1); color: var(--text); }
+.cat-chip.on { background: var(--grad-primary); border-color: transparent; color: #05201a; }
+.casa-store {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+}
+.casa-store-card {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 18px 14px 14px; text-align: center;
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid rgba(255, 255, 255, .1); border-radius: 16px;
+  transition: transform .16s, border-color .16s, box-shadow .16s;
+}
+.casa-store-card:hover {
+  transform: translateY(-3px); border-color: rgba(255, 255, 255, .2);
+  box-shadow: 0 14px 32px rgba(2, 6, 23, .5);
+}
+.cs-name { font-size: 13.5px; font-weight: 700; }
+.cs-desc { font-size: 11.5px; color: var(--text-dim); min-height: 32px; }
+.cs-foot { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; }
+
+@media (max-width: 700px) {
+  .casa { margin: -6px -6px -14px; padding: 14px 12px 0; min-height: auto; }
+  .casa-time { font-size: 24px; }
+  .casa-search { width: 100%; order: 3; }
+  .casa-chips { width: 100%; order: 4; }
+  .casa-chip { flex: 1 1 130px; min-width: 0; }
+  .casa-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+  .casa-dock { margin: 18px -12px 0; }
+  .dock-item { min-width: 54px; }
+}
 
 /* ---------- live performance ---------- */
 .perf-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
