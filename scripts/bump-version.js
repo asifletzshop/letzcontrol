@@ -54,30 +54,35 @@ else if (type === 'minor') next = [major, minor + 1, 0];
 else next = [major, minor, patch + 1];
 
 pkg.version = next.join('.');
-fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 
 /* The lock file carries the version too, and npm compares the two: if they
  * differ it refuses `npm ci` with "package.json and package-lock.json are
  * not in sync" and the update falls back to `npm install`, which re-resolves
- * every dependency version on a live install. A version bump that leaves
- * the lock behind therefore breaks the reproducible install for everyone,
+ * every dependency version on a live install. A version bump that leaves the
+ * lock behind therefore breaks the reproducible install for everyone,
  * silently.
  *
  * Only the version is touched here. The resolved dependency tree is left
  * exactly as npm recorded it - regenerating it would be a different change,
  * and one that belongs to a deliberate "npm update" rather than to a version
- * bump. */
-try {
-  const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
-  if (lock.version !== pkg.version) lock.version = pkg.version;
-  if (lock.packages && lock.packages[''] && lock.packages[''].version !== pkg.version) {
-    lock.packages[''].version = pkg.version;
+ * bump.
+ *
+ * The lock is prepared BEFORE package.json is written, so a lock file that
+ * cannot be updated leaves the pair alone rather than half-moving it. */
+let lock = null;
+if (fs.existsSync(lockPath)) {
+  try {
+    lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+    lock.version = pkg.version;
+    if (lock.packages && lock.packages['']) lock.packages[''].version = pkg.version;
+  } catch (e) {
+    console.error(`Could not update ${lockPath}: ${e.message}`);
+    console.error('The version was not moved - a half-moved pair would break npm ci.');
+    process.exit(1);
   }
-  fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n');
-} catch (e) {
-  /* No lock file, or one that cannot be read: the bump is still worth
-   * making, and npm install will sort the lock out. */
-  console.error(`Note: the lock file was not updated (${e.message})`);
 }
+
+fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+if (lock) fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n');
 
 console.log(pkg.version);

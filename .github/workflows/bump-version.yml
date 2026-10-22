@@ -60,7 +60,11 @@ jobs:
         run: |
           git config user.name  'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package.json
+          # Both files: the bump script moves the version in package.json and
+          # in package-lock.json, and npm compares the two. Committing only
+          # the first leaves them out of step, npm ci refuses to install, and
+          # every panel update falls back to npm install.
+          git add package.json package-lock.json
           if git diff --cached --quiet; then
             echo 'The version was already current.'
             exit 0
