@@ -340,6 +340,9 @@ kbd {
 .tab-btn.on .tab-badge { background: rgba(52, 211, 153, .18); color: var(--accent); }
 .tab-badge.warn { background: rgba(251, 191, 36, .16); color: var(--amber); }
 .tab-btn[hidden] { display: none; }
+/* Settings renders every tab's cards once and toggles them, so a hidden panel
+ * must not hold its grid space. */
+.set-panel[hidden] { display: none; }
 
 /* hero stat cards */
 .hero-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }

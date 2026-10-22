@@ -880,6 +880,11 @@ window.SettingsView = (() => {
     return strip;
   }
 
+  /* The boxes above become tabs: a page of eight cards is a page nobody
+   * scrolls. The active tab survives a refresh, so saving a setting does not
+   * throw you back to the first one. */
+  let activeTab = 'account';
+
   async function render(root, me) {
     let data;
     try {
@@ -897,33 +902,72 @@ window.SettingsView = (() => {
       ui.el('button', { class: 'btn', onclick: () => render(root, me) }, '↻ Refresh')));
     root.appendChild(statusStrip(me));
 
-    root.appendChild(section('Your account',
-      'How you sign in, how the panel looks for you, and the browsers signed in to this account.',
-      pair(accountCard(me, state), themeCard(state, (data.prefs && data.prefs.theme) || 'dark')),
-      pair(prefsCard(data), sessionsCard(me))));
+    const panels = {};
+    const tabs = [];
+    const addTab = (id, label, ...items) => {
+      const keep = items.filter(Boolean);
+      if (!keep.length) return;
+      panels[id] = ui.el('div', { class: 'set-panel' }, ...keep);
+      tabs.push({ id, label });
+    };
+
+    addTab('account', 'Account',
+      section('Your account', 'How you sign in, and how the panel looks for you.',
+        pair(accountCard(me, state), themeCard(state, (data.prefs && data.prefs.theme) || 'dark'))),
+      section('Preferences', 'Personal to your account — no effect on other users.',
+        prefsCard(data)));
+
+    addTab('sessions', 'Sessions',
+      section('Active sessions', 'The browsers signed in to this account right now.',
+        sessionsCard(me)));
 
     if (isAdmin) {
-      root.appendChild(section('This panel',
-        'Where the panel answers, and what it is running. Secrets are never shown or editable here.',
-        pair(domainCard(state), portCard(state)),
-        timeCard(state),
-        configCard(data, isAdmin)));
-
-      root.appendChild(section('Admin tools',
-        'phpMyAdmin and the webmail sit on their own ports, open to the whole internet and so restricted by address.',
-        adminToolsCard(state)));
+      addTab('panel', 'Panel',
+        section('This panel',
+          'Where the panel answers, and what it is running. Secrets are never shown or editable here.',
+          pair(domainCard(state), portCard(state)),
+          timeCard(state),
+          configCard(data, isAdmin)),
+        section('Admin tools',
+          'phpMyAdmin and the webmail sit on their own ports, open to the whole internet and so restricted by address.',
+          adminToolsCard(state)));
     }
 
-    root.appendChild(section('Maintenance',
-      'A backup holds your sites, mailboxes, databases and users. Restoring replaces all of them.',
-      isAdmin ? pair(maintenanceCard(state, isAdmin), systemCard())
-        : maintenanceCard(state, isAdmin)));
+    addTab('maint', 'Maintenance',
+      section('Maintenance',
+        'A backup holds your sites, mailboxes, databases and users. Restoring replaces all of them.',
+        maintenanceCard(state, isAdmin)));
 
-    root.appendChild(ui.el('div', { class: 'card' },
-      ui.el('h3', {}, 'About'),
-      ui.el('p', { class: 'text-dim' },
-        'letzControl — lightweight VPS & hosting control panel. '
-        + (data.hasDbPassword ? 'Database credentials are configured.' : 'Database access uses local root socket auth.'))));
+    addTab('system', 'System',
+      isAdmin ? section('System', null, systemCard()) : null,
+      ui.el('div', { class: 'card' },
+        ui.el('h3', {}, 'About'),
+        ui.el('p', { class: 'text-dim' },
+          'letzControl — lightweight VPS & hosting control panel. '
+          + (data.hasDbPassword ? 'Database credentials are configured.' : 'Database access uses local root socket auth.'))));
+
+    if (!tabs.some((t) => t.id === activeTab)) activeTab = tabs[0].id;
+
+    const bar = ui.el('div', { class: 'tab-bar' });
+    const btns = [];
+    tabs.forEach((t) => {
+      const btn = ui.el('button', { class: 'tab-btn' + (t.id === activeTab ? ' on' : '') }, t.label);
+      btn.onclick = () => {
+        activeTab = t.id;
+        tabs.forEach((o, i) => {
+          panels[o.id].hidden = o.id !== activeTab;
+          btns[i].classList.toggle('on', o.id === activeTab);
+        });
+      };
+      btns.push(btn);
+      bar.appendChild(btn);
+    });
+    root.appendChild(bar);
+
+    tabs.forEach((t) => {
+      panels[t.id].hidden = t.id !== activeTab;
+      root.appendChild(panels[t.id]);
+    });
   }
 
   return { render };
