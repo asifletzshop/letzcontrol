@@ -580,3 +580,152 @@ input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 15
   .topbar-sub { display: none; }
   .grid.cols-2 { grid-template-columns: 1fr; }
 }
+
+/* ==========================================================================
+   Dashboard
+   --------------------------------------------------------------------------
+   The pieces the redesigned dashboard is built from. Every colour here comes
+   from the custom properties above, so the cPanel theme gets its own palette
+   without a single rule of its own.
+   ========================================================================== */
+
+/* ---------- the address strip ---------- */
+.whereami { padding: 11px 16px; }
+.whereami-in { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
+.whereami-ico {
+  width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 15px;
+  background: var(--bg-elev); border: 1px solid var(--border);
+}
+.whereami-note { font-size: 12px; }
+
+/* ---------- hero stat cards ---------- */
+/* Each card carries a tone, which sets the colour of its icon, its meter and
+ * the glow along its top edge. One custom property, so the three stay in
+ * step without repeating the palette. */
+.stat-card { --tone: var(--accent); --tone-grad: var(--grad-primary); position: relative; overflow: hidden; }
+.stat-card.tone-green { --tone: var(--accent); --tone-grad: var(--grad-primary); }
+.stat-card.tone-cyan { --tone: var(--accent-2); --tone-grad: linear-gradient(135deg, #22d3ee, #38bdf8); }
+.stat-card.tone-violet { --tone: var(--violet); --tone-grad: var(--grad-violet); }
+.stat-card.tone-amber { --tone: var(--amber); --tone-grad: var(--grad-amber); }
+
+.stat-card::before {
+  content: ''; position: absolute; inset: 0 0 auto; height: 2px;
+  background: var(--tone-grad); opacity: .65;
+}
+.stat-card .stat-icon { background: var(--tone-grad); }
+.stat-card .stat-value { color: var(--text); }
+.stat-card .meter { height: 5px; margin-top: 11px; }
+.stat-card .meter > div { background: var(--tone-grad); box-shadow: 0 0 10px var(--tone); }
+
+/* The sparkline sits between the numbers and the meter, so the card reads
+ * top to bottom: what it is, how big it is, what shape it has been in. */
+.stat-spark { height: 38px; margin-top: 10px; }
+.stat-spark canvas { display: block; width: 100%; height: 38px; }
+
+/* ---------- quick action tiles ---------- */
+.tile-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); }
+.tile {
+  display: flex; align-items: center; gap: 10px; padding: 11px 13px; text-align: left;
+  border-radius: 12px; border: 1px solid var(--border); cursor: pointer;
+  background: var(--bg-elev); color: var(--text);
+  font-size: 13px; font-weight: 600; font-family: var(--font);
+  transition: transform .15s, border-color .15s, box-shadow .15s;
+}
+.tile:hover {
+  transform: translateY(-2px); border-color: var(--border-strong);
+  box-shadow: var(--shadow-2);
+}
+.tile:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(52, 211, 153, .3); }
+.tile-ico {
+  width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 15px;
+  background: var(--bg-card); border: 1px solid var(--border);
+}
+.tile-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- live performance ---------- */
+.perf-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+.perf-cell { min-width: 0; }
+.perf-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--text-dim); font-weight: 700; margin-bottom: 6px;
+}
+.perf-cell .chart-box { height: 168px; }
+
+/* ---------- the health gauge ---------- */
+.health-row {
+  display: flex; align-items: center; gap: 18px; margin-top: 18px;
+  padding-top: 16px; border-top: 1px solid var(--border);
+}
+.health-ring { flex-shrink: 0; width: 96px; height: 96px; }
+.health-ring canvas { display: block; width: 96px; height: 96px; }
+.health-body { min-width: 0; }
+.health-score { font-size: 26px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.health-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--text-dim); margin-bottom: 4px; }
+.health-row .text-dim { font-size: 12.5px; }
+
+/* ---------- website cards ---------- */
+.site-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)); }
+.site-card {
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-elev); padding: 13px 15px;
+  transition: transform .15s, border-color .15s, box-shadow .15s;
+}
+.site-card:hover { transform: translateY(-2px); border-color: var(--border-strong); box-shadow: var(--shadow-1); }
+.site-top { display: flex; align-items: center; gap: 9px; }
+.site-domain {
+  font-weight: 650; font-size: 14px; color: var(--text); text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+.site-domain:hover { color: var(--accent); }
+.site-open { margin-left: auto; text-decoration: none; color: var(--text-dim); font-size: 14px; flex-shrink: 0; }
+.site-open:hover { color: var(--accent); }
+.site-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.site-foot {
+  display: flex; align-items: center; gap: 10px; margin-top: 11px;
+  padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px;
+}
+.site-manage { margin-left: auto; color: var(--text-dim); text-decoration: none; font-weight: 600; font-size: 12px; }
+.site-manage:hover { color: var(--accent); }
+
+/* ---------- status dots ---------- */
+.dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  background: var(--text-dim); display: inline-block;
+}
+.dot.ok { background: var(--accent); box-shadow: 0 0 0 3px rgba(52, 211, 153, .16); }
+.dot.warn { background: var(--warn); box-shadow: 0 0 0 3px rgba(251, 191, 36, .16); }
+.dot.bad { background: var(--danger); box-shadow: 0 0 0 3px rgba(248, 113, 113, .16); }
+.dot.idle { background: var(--text-dim); opacity: .5; }
+
+/* ---------- services ---------- */
+.ops-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-items: start; }
+.svc-list { display: flex; flex-direction: column; gap: 2px; }
+.svc-row {
+  display: flex; align-items: center; gap: 10px; padding: 7px 2px;
+  border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.svc-row:last-child { border-bottom: none; }
+.svc-name { font-weight: 550; }
+.svc-state { margin-left: auto; font-size: 12px; color: var(--text-dim); }
+.svc-state.ok { color: var(--accent); }
+.svc-state.bad { color: var(--danger); }
+
+/* ---------- system information ---------- */
+.sys-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.sys-item { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.sys-ico {
+  width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 14px;
+  background: var(--bg-elev); border: 1px solid var(--border);
+}
+.sys-body { min-width: 0; }
+.sys-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--text-dim); font-weight: 700; }
+.sys-value { font-size: 13px; font-weight: 550; margin-top: 1px; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 720px) {
+  .health-row { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .tile-grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
+}
