@@ -729,3 +729,13 @@ input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 15
   .health-row { flex-direction: column; align-items: flex-start; gap: 10px; }
   .tile-grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
 }
+
+/* ---------- admin-tool access list (Settings) ---------- */
+.allow-list { display: flex; flex-direction: column; gap: 6px; }
+.allow-row {
+  display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-elev); font-size: 13px;
+}
+.allow-row .mono { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.allow-mine { border-color: var(--border-strong); }

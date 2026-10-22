@@ -450,6 +450,118 @@ window.SettingsView = (() => {
   }
 
   /* ------------------------- panel config (admin) --------------------- */
+  /* ------------------------------------------------- admin tools ----- */
+  /* Who may reach the webmail and phpMyAdmin.
+   *
+   * Both sit on their own port, open to the whole internet, and are scanned
+   * within minutes - so they are restricted to the addresses that administer
+   * this box. The trouble is that an operator's own address is very often a
+   * dynamic one: the list is right the day it is written and wrong the next
+   * time the connection changes, and the only symptom is a 403 from a tool
+   * you are allowed to use. So the panel shows the address it sees you
+   * coming from and offers to add it. */
+  function adminToolsCard(state) {
+    const card = ui.el('div', { class: 'card' },
+      ui.el('h3', {}, 'Webmail & phpMyAdmin access'),
+      ui.el('div', { class: 'text-dim' }, 'Loading…'));
+
+    const load = async () => {
+      let d;
+      try { d = await api.get('/settings/panel/admin-tools'); }
+      catch (e) {
+        card.innerHTML = '';
+        card.appendChild(ui.el('h3', {}, 'Webmail & phpMyAdmin access'));
+        card.appendChild(ui.el('div', { class: 'text-dim' }, e.message));
+        return;
+      }
+      card.innerHTML = '';
+      card.appendChild(ui.el('h3', {}, 'Webmail & phpMyAdmin access'));
+      card.appendChild(ui.el('p', { class: 'text-dim', style: 'margin-top:0' },
+        'These run on their own ports and are open to the whole internet, so only the '
+        + 'addresses listed here may reach them. Everyone else gets a 403. '
+        + 'If your own address changes, add the new one here.'));
+
+      const list = ui.el('div', { class: 'allow-list' });
+      const draw = (cidrs) => {
+        list.innerHTML = '';
+        if (!cidrs.length) {
+          list.appendChild(ui.el('div', { class: 'text-dim' },
+            'Only this server itself can reach them.'));
+        }
+        for (const c of cidrs) {
+          const row = ui.el('div', { class: 'allow-row' },
+            ui.el('span', { class: 'mono' }, c),
+            ui.badge(c === d.yourIp ? 'this address' : '', 'green'));
+          const rm = ui.el('button', { class: 'btn btn-sm' }, '✕ Remove');
+          rm.onclick = async () => {
+            rm.disabled = true;
+            try {
+              const r = await api.put('/settings/panel/admin-tools',
+                { allowedCidrs: cidrs.filter((x) => x !== c) });
+              ui.toast(`${c} removed`);
+              load();
+            } catch (e) { ui.toast(e.message, true); rm.disabled = false; }
+          };
+          row.appendChild(rm);
+          list.appendChild(row);
+        }
+      };
+      draw(d.allowedCidrs);
+      card.appendChild(list);
+
+      /* The address the panel sees. */
+      if (d.yourIp) {
+        const mine = d.allowedCidrs.includes(d.yourIp);
+        const row = ui.el('div', { class: 'allow-row allow-mine' },
+          ui.el('span', { class: 'mono' }, d.yourIp),
+          ui.el('span', { class: 'text-dim' }, mine ? '— your address, allowed' : '— your address, not allowed yet'));
+        if (!mine) {
+          const add = ui.el('button', { class: 'btn btn-sm btn-primary' }, '+ Allow my address');
+          add.onclick = async () => {
+            add.disabled = true;
+            try {
+              await api.put('/settings/panel/admin-tools',
+                { allowedCidrs: d.allowedCidrs.concat([d.yourIp]) });
+              ui.toast(`${d.yourIp} can now reach the webmail and phpMyAdmin`);
+              load();
+            } catch (e) { ui.toast(e.message, true); add.disabled = false; }
+          };
+          row.appendChild(add);
+        }
+        card.appendChild(row);
+      }
+
+      /* A free-form entry, for a second address or a range. */
+      const input = ui.el('input', { type: 'text', placeholder: '203.0.113.7 or 203.0.113.0/24' });
+      const addBtn = ui.el('button', { class: 'btn btn-sm' }, '+ Add address');
+      addBtn.onclick = async () => {
+        const v = input.value.trim();
+        if (!v) return;
+        addBtn.disabled = true;
+        try {
+          const r = await api.put('/settings/panel/admin-tools',
+            { allowedCidrs: d.allowedCidrs.concat([v]) });
+          if (r.allowedCidrs && r.allowedCidrs.indexOf(v) < 0) {
+            ui.toast('That does not look like an address or a CIDR range', true);
+          } else {
+            ui.toast(`${v} added`);
+          }
+          input.value = '';
+          load();
+        } catch (e) { ui.toast(e.message, true); }
+        addBtn.disabled = false;
+      };
+      card.appendChild(ui.el('div', { style: 'display:flex;gap:8px;align-items:flex-end;margin-top:12px' },
+        ui.el('label', { style: 'flex:1;margin:0' }, 'Add another address', input),
+        addBtn));
+
+      card.appendChild(ui.el('p', { class: 'text-dim', style: 'font-size:12px;margin-bottom:0' },
+        `The list is enforced by nginx in ${d.snippetPath}.`));
+    };
+    load();
+    return card;
+  }
+
   function configCard(data, isAdmin) {
     const c = data.config || {};
     const inputs = {};
@@ -670,6 +782,7 @@ window.SettingsView = (() => {
       root.appendChild(domainCard(state));
       root.appendChild(portCard(state));
       root.appendChild(timeCard(state));
+      root.appendChild(adminToolsCard(state));
       root.appendChild(configCard(data, isAdmin));
     }
     root.appendChild(maintenanceCard(state, isAdmin));
