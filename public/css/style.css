@@ -681,6 +681,76 @@ input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 15
 }
 .tile-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ---------- container tiles (Docker page) ---------- */
+/* CasaOS's shape: one tile per container, the icon carrying the state dot in
+ * its corner, and everything you can do to it behind a ⋮ in the corner -
+ * the name, the image and what it is using are the only things in the open.
+ * Clicking the tile itself is "show me everything" (the inspector). */
+.ctile-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+.ctile {
+  position: relative; display: flex; flex-direction: column; align-items: center;
+  padding: 18px 12px 14px; text-align: center; min-width: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .03), rgba(255, 255, 255, 0) 45%), var(--bg-card);
+  border: 1px solid var(--border); border-radius: 14px; cursor: pointer;
+  transition: transform .15s, border-color .15s, box-shadow .15s;
+}
+.ctile:hover {
+  transform: translateY(-3px); border-color: var(--border-strong); box-shadow: var(--shadow-2);
+}
+.ctile:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(52, 211, 153, .3); }
+.ctile-icon {
+  position: relative; width: 56px; height: 56px; border-radius: 15px;
+  display: flex; align-items: center; justify-content: center; font-size: 26px;
+  background: var(--bg-elev); border: 1px solid var(--border); margin-bottom: 11px;
+}
+/* A container with no known image gets its first letter on a colour picked
+ * from the image name, so the same image always looks the same. */
+.ctile-icon.letter { border: none; color: #fff; font-weight: 800; font-size: 22px; }
+.ctile-dot {
+  position: absolute; right: -3px; bottom: -3px; width: 13px; height: 13px;
+  border-radius: 50%; background: var(--text-dim); border: 2.5px solid var(--bg-card);
+}
+.ctile-dot.ok { background: var(--accent); box-shadow: 0 0 8px rgba(52, 211, 153, .55); }
+.ctile-dot.warn { background: var(--warn); box-shadow: 0 0 8px rgba(251, 191, 36, .5); }
+.ctile-name {
+  font-size: 13px; font-weight: 700; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ctile-sub, .ctile-meta {
+  font-size: 11px; color: var(--text-dim); margin-top: 3px; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ctile-sub { font-family: var(--mono); }
+.ctile-meta { margin-top: 2px; }
+.ctile-more {
+  position: absolute; top: 7px; right: 7px; width: 26px; height: 26px;
+  border-radius: 8px; border: 1px solid transparent; background: transparent;
+  color: var(--text-dim); font-size: 15px; line-height: 1; cursor: pointer;
+  opacity: 0; transition: opacity .15s, background .15s, color .15s;
+}
+.ctile:hover .ctile-more, .ctile:focus-within .ctile-more, .ctile-more:focus-visible { opacity: 1; }
+.ctile-more:hover { background: var(--bg-hover); color: var(--text); border-color: var(--border-strong); }
+.ctile-menu {
+  display: none; position: absolute; top: 34px; right: 8px; z-index: 30;
+  min-width: 172px; padding: 5px; text-align: left;
+  background: var(--bg-elev); border: 1px solid var(--border-strong);
+  border-radius: 10px; box-shadow: var(--shadow-2);
+}
+.ctile-menu.open { display: block; }
+.ctile-menu button {
+  display: flex; width: 100%; align-items: center; gap: 8px; padding: 7px 10px;
+  border: 0; border-radius: 7px; background: transparent; color: var(--text);
+  font-size: 12.5px; font-family: inherit; cursor: pointer; text-align: left;
+}
+.ctile-menu button:hover { background: var(--bg-hover); }
+.ctile-menu button.danger { color: #f87171; }
+.ctile-menu .msep { height: 1px; background: var(--border); margin: 4px 2px; }
+.ctile-add { border-style: dashed; color: var(--text-dim); justify-content: center; gap: 4px; }
+.ctile-add .plus { font-size: 28px; line-height: 1; }
+.ctile-add:hover .plus { color: var(--accent); }
+/* Touch devices never hover, so the corner button is always there. */
+@media (hover: none) { .ctile-more { opacity: 1; } }
+
 /* ---------- live performance ---------- */
 .perf-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
 .perf-cell { min-width: 0; }

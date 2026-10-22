@@ -8,6 +8,41 @@ window.DockerView = (() => {
   let runningOnly = false;
   let stats = {};          /* id -> the last one-shot reading */
   let statsAt = 0;
+  let openMenu = null;     /* the ⋮ menu currently open, if any */
+
+  /* Close the open tile menu, if any. Shared by every path that should
+   * dismiss it: opening another, clicking a menu entry, clicking away. */
+  function closeMenus() {
+    if (!openMenu) return;
+    openMenu.classList.remove('open');
+    openMenu = null;
+  }
+
+  /* The daemon has no artwork for a container, so the common images keep
+   * their mark and everything else gets its first letter on a hue picked
+   * from the image name - the same image always lands on the same colour.
+   * Matched against the repository part only (before any :tag), so
+   * nginx:alpine reads as nginx and not as alpine. */
+  const IMG_MARKS = [
+    ['nginx', '🌐'], ['apache', '🪶'], ['httpd', '🪶'],
+    ['postgres', '🐘'], ['mysql', '🐬'], ['mariadb', '🐬'], ['mongo', '🍃'],
+    ['redis', '⚡'], ['memcache', '⚡'],
+    ['ubuntu', '🐧'], ['debian', '🌀'],
+    ['traefik', '🚦'], ['caddy', '🛡'], ['certbot', '📜'], ['acme', '📜'],
+    ['grafana', '📈'], ['prometheus', '🔥'], ['portainer', '🚢'],
+    ['wordpress', '📝'], ['nextcloud', '☁️'], ['jellyfin', '🎬'], ['plex', '🎬'],
+    ['homeassistant', '🏠'], ['pihole', '🕳️'], ['vaultwarden', '🔐'], ['bitwarden', '🔐'],
+    ['postfix', '📬'], ['dovecot', '📬'], ['mailu', '📬'], ['roundcube', '✉️'],
+    ['phpmyadmin', '🗄️'], ['adminer', '🗄️'], ['docker', '🐳'], ['alpine', '🏔']
+  ];
+
+  function iconFor(image) {
+    const repo = String(image || '').toLowerCase().split('/').pop().split(':')[0];
+    for (const [k, mark] of IMG_MARKS) if (repo.includes(k)) return mark;
+    let h = 0;
+    for (const ch of String(image || '')) h = (h * 31 + ch.charCodeAt(0)) % 360;
+    return (repo.match(/[a-z0-9]/i) || ['?'])[0].toUpperCase() + `|${h}`;
+  }
 
   const ago = (ms) => {
     if (!ms) return '–';
@@ -37,22 +72,8 @@ window.DockerView = (() => {
     const old = btn.textContent;
     btn.disabled = true;
     btn.textContent = label || '…';
-    return () => { btn.disabled = false; btn.textContent = old; };
+    return () => { btn.disabled = false; btn.textContent = old; }
   }
-
-  const actionBtn = (id, action, label, cls) => ui.el('button', {
-    class: `btn btn-sm ${cls || ''}`,
-    title: action,
-    onclick: async (e) => {
-      const done = busy(e.currentTarget);
-      try {
-        await api.post(`/docker/containers/${id}/action`, { action });
-        ui.toast(`${action} requested`);
-      } catch (err) {
-        ui.toast(err.message, true);
-      } finally { done(); }
-    }
-  }, label);
 
   /* ---------------------------------------------------- details -------- */
   /* Everything the daemon knows about one container, plus what it is using
@@ -306,12 +327,9 @@ window.DockerView = (() => {
         ui.el('span', { class: 'spacer' }),
         statsAt ? ui.el('span', { class: 'text-dim', style: 'font-size:11.5px' },
           `measured ${ago(statsAt)} ago`) : null),
-      shown.length ? ui.el('div', { class: 'table-wrap' },
-        ui.el('table', {},
-          ui.el('thead', {}, ui.el('tr', {},
-            ui.el('th', {}, 'Name'), ui.el('th', {}, 'Image'), ui.el('th', {}, 'State'),
-            ui.el('th', {}, 'Using'), ui.el('th', {}, 'Ports'), ui.el('th', {}, ''))),
-          ui.el('tbody', {}, ...shown.map((c) => containerRow(root, c)))))
+      shown.length ? ui.el('div', { class: 'ctile-grid' },
+        ...shown.map((c) => containerTile(root, c)),
+        addTile(root))
         : ui.el('div', { class: 'empty' },
           list.length ? 'No container matches that.' : 'No containers yet. Run one from an image.')
     ));
@@ -330,54 +348,101 @@ window.DockerView = (() => {
     ));
   }
 
-  function containerRow(root, c) {
+  /* One container as a CasaOS-style tile: icon with the state dot in its
+   * corner, name, image, what it is doing - and a ⋮ in the corner holding
+   * every action, so the grid stays a grid. Clicking the tile itself opens
+   * the inspector, the way clicking an app in CasaOS opens the app. */
+  function containerTile(root, c) {
     const s = stats[c.id];
-    const tone = c.state === 'running' ? 'green'
-      : c.state === 'exited' ? 'gray'
-      : c.state === 'paused' ? 'blue' : 'yellow';
+    const mark = iconFor(c.image);
+    const letter = mark.includes('|');
+    const [glyph, hue] = letter ? mark.split('|') : [mark, null];
 
-    return ui.el('tr', {},
-      ui.el('td', {},
-        ui.el('div', { style: 'display:flex;align-items:center;gap:8px' },
-          ui.el('span', { class: `dot ${c.state === 'running' ? 'ok' : c.state === 'exited' ? '' : 'warn'}` }),
-          ui.el('strong', {}, c.name)),
-        ui.el('div', { class: 'text-dim mono', style: 'font-size:11px' }, c.id)),
-      ui.el('td', { class: 'mono', style: 'font-size:12px' }, c.image),
-      ui.el('td', {},
-        ui.badge(c.health ? `${c.state} · ${c.health}` : c.state, tone),
-        c.uptime ? ui.el('div', { class: 'text-dim', style: 'font-size:11.5px' },
-          `up ${ago(c.uptime)}`) : null),
-      ui.el('td', { class: 'mono', style: 'font-size:11.5px' },
-        s ? ui.el('div', {},
-          ui.el('div', {}, `${(s.cpu || 0).toFixed(1)}% cpu`),
-          ui.el('div', {}, `${(s.memPct || 0).toFixed(1)}% mem · ${ui.fmtBytes(s.memUsed)}`))
-          : (c.status || '–')),
-      ui.el('td', { class: 'mono', style: 'font-size:11.5px' }, c.ports || '–'),
-      ui.el('td', { style: 'white-space:nowrap;text-align:right' },
-        c.state === 'running'
-          ? ui.el('span', {}, actionBtn(c.id, 'pause', '⏸'), ' ',
-            actionBtn(c.id, 'restart', '↻'), ' ', actionBtn(c.id, 'stop', '⏹'))
-          : c.state === 'paused'
-            ? ui.el('span', {}, actionBtn(c.id, 'unpause', '▶'))
-            : ui.el('span', {}, actionBtn(c.id, 'start', '▶', 'btn-primary')),
-        ' ',
-        ui.el('button', {
-          class: 'btn btn-sm', title: 'Details',
-          onclick: () => detailsModal(c)
-        }, 'Details'), ' ',
-        ui.el('button', {
-          class: 'btn btn-sm', title: 'Logs',
-          onclick: () => logsModal(c)
-        }, 'Logs'), ' ',
-        ui.el('button', {
-          class: 'btn btn-sm btn-danger', title: 'Remove',
-          onclick: async () => {
-            if (!(await ui.confirmBox(`Remove ${c.name}? It is stopped and deleted.`, { okText: 'Remove' }))) return;
-            try { await api.del(`/docker/containers/${c.id}`); ui.toast(`${c.name} removed`); load(root); }
-            catch (e) { ui.toast(e.message, true); }
-          }
-        }, '🗑'))
+    const dotCls = c.state === 'running' ? 'ok' : c.state === 'paused' ? 'warn' : '';
+    const icon = ui.el('div', {
+      class: `ctile-icon${letter ? ' letter' : ''}`,
+      style: letter ? `background:linear-gradient(135deg, hsl(${hue}, 60%, 46%), hsl(${hue}, 60%, 30%))` : ''
+    }, letter ? glyph : mark, ui.el('span', { class: `ctile-dot ${dotCls}` }));
+
+    /* Two short lines under the image: the state - named outright, because
+     * that is the fact a tile exists to show - and, when there is a reading,
+     * what it is using right now. */
+    const stateLine = c.state === 'running'
+      ? (c.uptime ? `running · up ${ago(c.uptime)}` : 'running')
+      : (c.health ? `${c.state} · ${c.health}` : (c.status || c.state));
+    const useLine = s
+      ? `${(s.cpu || 0).toFixed(1)}% cpu · ${(s.memPct || 0).toFixed(1)}% mem`
+      : null;
+
+    const act = (action, label) => ui.el('button', {
+      onclick: async (e) => {
+        if (e.stopPropagation) e.stopPropagation();
+        closeMenus();
+        try {
+          await api.post(`/docker/containers/${c.id}/action`, { action });
+          ui.toast(`${action} requested`);
+          load(root);
+        } catch (err) { ui.toast(err.message, true); }
+      }
+    }, label);
+
+    const menu = ui.el('div', { class: 'ctile-menu' },
+      ui.el('button', {
+        onclick: (e) => { if (e.stopPropagation) e.stopPropagation(); closeMenus(); detailsModal(c); }
+      }, 'ℹ️ Details'),
+      ui.el('button', {
+        onclick: (e) => { if (e.stopPropagation) e.stopPropagation(); closeMenus(); logsModal(c); }
+      }, '📋 Logs'),
+      ui.el('div', { class: 'msep' }),
+      ...(c.state === 'running'
+        ? [act('pause', '⏸ Pause'), act('restart', '↻ Restart'), act('stop', '⏹ Stop')]
+        : c.state === 'paused'
+          ? [act('unpause', '▶ Unpause')]
+          : [act('start', '▶ Start')]),
+      ui.el('div', { class: 'msep' }),
+      ui.el('button', {
+        class: 'danger',
+        onclick: async (e) => {
+          if (e.stopPropagation) e.stopPropagation();
+          closeMenus();
+          if (!(await ui.confirmBox(`Remove ${c.name}? It is stopped and deleted.`, { okText: 'Remove' }))) return;
+          try { await api.del(`/docker/containers/${c.id}`); ui.toast(`${c.name} removed`); load(root); }
+          catch (err) { ui.toast(err.message, true); }
+        }
+      }, '🗑 Remove')
     );
+
+    const more = ui.el('button', {
+      class: 'ctile-more', title: 'Actions', 'aria-label': `Actions for ${c.name}`,
+      onclick: (e) => {
+        if (e.stopPropagation) e.stopPropagation();
+        const wasOpen = menu.classList.contains('open');
+        closeMenus();
+        if (!wasOpen) { menu.classList.add('open'); openMenu = menu; }
+      }
+    }, '⋮');
+
+    const tile = ui.el('div', {
+      class: 'ctile', role: 'button', tabindex: '0',
+      title: `${c.name} — ${c.image}${c.ports ? ` — ${c.ports}` : ''}`,
+      onclick: () => detailsModal(c)
+    }, more, icon,
+      ui.el('div', { class: 'ctile-name' }, c.name),
+      ui.el('div', { class: 'ctile-sub' }, c.image),
+      ui.el('div', { class: 'ctile-meta' }, stateLine),
+      useLine ? ui.el('div', { class: 'ctile-meta' }, useLine) : null,
+      menu);
+    return tile;
+  }
+
+  /* The CasaOS "+": a dashed tile at the end of the grid that runs a new
+   * container, so the page's main verb is where the eye lands. */
+  function addTile(root) {
+    return ui.el('div', {
+      class: 'ctile ctile-add', role: 'button', tabindex: '0', title: 'Run a container',
+      onclick: () => runModal(root)
+    }, ui.el('div', { class: 'plus' }, '+'),
+      ui.el('div', { class: 'ctile-name' }, 'Run a container'));
   }
 
   function imageRow(root, img) {
@@ -406,6 +471,10 @@ window.DockerView = (() => {
         }, '🗑'))
     );
   }
+
+  /* Clicking anywhere outside a tile's menu closes it. The ⋮ button and the
+   * menu entries stopPropagation, so they do not trip this. */
+  document.addEventListener('click', () => closeMenus());
 
   return { render: (root) => load(root) };
 })();
