@@ -125,6 +125,7 @@ window.WordpressView = (() => {
       }, '⬅ All sites'),
       domainEl,
       ui.el('span', { class: 'spacer' }),
+      ui.el('button', { class: 'btn', onclick: () => cacheModal(root, me, id, refresh) }, '🧹 Purge cache'),
       ui.el('button', { class: 'btn', onclick: refresh }, '↻ Refresh')
     ));
     root.appendChild(fill);
@@ -162,6 +163,30 @@ window.WordpressView = (() => {
       card.querySelector('button').onclick = () => installModal(root, me, site);
       fill.appendChild(card);
       return;
+    }
+
+    if (st.maintenance && st.maintenance.present) {
+      /* WordPress is answering 503 to everybody because an update died
+       * without clearing its own lock. Say so, and offer to clear it. */
+      const banner = ui.el('div', { class: 'banner' },
+        st.maintenance.live
+          ? `⚠ This site is locked in maintenance mode (${st.maintenance.ageSeconds}s ago) - it is answering 503 to every visitor.`
+          : `⚠ A maintenance lock is still in place (${st.maintenance.ageSeconds}s ago). It is about to lapse on its own.`
+      );
+      const clearBtn = ui.el('button', { class: 'btn btn-primary' }, 'Clear the lock');
+      clearBtn.onclick = async () => {
+        clearBtn.disabled = true;
+        try {
+          const r = await api.post(`/wordpress/${id}/maintenance`);
+          ui.toast(r.removed ? 'The maintenance lock is cleared' : (r.message || 'Nothing to clear'));
+          refresh();
+        } catch (e) {
+          ui.toast(e.message, true);
+          clearBtn.disabled = false;
+        }
+      };
+      banner.appendChild(ui.el('span', { style: 'margin-left:10px' }, clearBtn));
+      fill.appendChild(banner);
     }
 
     const upd = {
@@ -331,6 +356,101 @@ window.WordpressView = (() => {
       ui.toast(`${what} saved`);
       load(root, me);
     } catch (e) { ui.toast(`${what}: ${e.message}`, true); load(root, me); }
+  }
+
+  /* ---------------------------------------------------- cache purge -- */
+  /* Two scopes, because the caches are not all the site's own.
+   *
+   * The object cache can be shared: the LiteSpeed Cache plugin stores it
+   * in Redis, and two sites on one Redis would lose each other's cache
+   * every time either was purged. The panel trims it to the site's own
+   * keys instead, and says so.
+   *
+   * The page cache belongs to the web server and every site it serves
+   * shares it, so clearing that is a wider act and is offered separately. */
+  async function cacheModal(root, me, id, refresh) {
+    const body = ui.el('div', {});
+    body.appendChild(ui.el('p', { class: 'text-dim', style: 'margin-top:0' },
+      'Loading what is cached…'));
+
+    const m = ui.modal({ title: 'Purge cache', body });
+    let report;
+    try {
+      report = await api.get(`/wordpress/${id}/cache`);
+    } catch (e) {
+      body.textContent = e.message;
+      return;
+    }
+    if (report.error) { body.textContent = report.error; return; }
+
+    body.innerHTML = '';
+
+    const bytes = (n) => {
+      if (!n && n !== 0) return '?';
+      const u = ['B', 'KB', 'MB', 'GB'];
+      let i = 0;
+      let v = n;
+      while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+      return `${v.toFixed(i ? 1 : 0)} ${u[i]}`;
+    };
+
+    /* what is there now */
+    const facts = [];
+    if (report.objectCache) {
+      const oc = report.objectCache;
+      facts.push(`object cache: ${oc.driver} on ${oc.host}:${oc.port} (db ${oc.db})` +
+        (oc.keys !== null ? ` - ${oc.keys} key(s) for this site` : ''));
+    }
+    if (report.lscwp) {
+      facts.push(`generated files: ${report.lscwp.files} in the docroot (${bytes(report.lscwp.bytes)})`);
+    }
+    if (report.server) {
+      facts.push(`server page cache: ${report.server.files} file(s) (${bytes(report.server.bytes)}) - shared by every site this server runs`);
+    }
+    if (!facts.length) facts.push('nothing recognisable is cached for this site');
+
+    body.appendChild(ui.el('div', { class: 'card', style: 'margin-bottom:12px' },
+      ui.el('h3', { style: 'margin-top:0' }, 'What is cached'),
+      ...facts.map((f) => ui.el('div', { class: 'text-dim' }, f)),
+      report.shared && report.shared.length
+        ? ui.el('div', { class: 'text-dim', style: 'margin-top:6px' },
+          `The object cache is shared with ${report.shared.map((s) => s.domain).join(', ')}.`)
+        : null
+    ));
+
+    const siteSel = ui.el('input', { type: 'radio', name: 'cache-scope', value: 'site' });
+    siteSel.checked = true;
+    const allSel = ui.el('input', { type: 'radio', name: 'cache-scope', value: 'all' });
+
+    body.appendChild(ui.el('label', { class: 'checkbox-label' }, siteSel,
+      "This site's cache only — the object cache is trimmed to this site's own keys, " +
+      'the transients are dropped and the generated files are removed. Other sites are untouched.'));
+    body.appendChild(ui.el('label', { class: 'checkbox-label' }, allSel,
+      'Everything — also clears the server page cache, which every site on this server shares, ' +
+      'and flushes the whole object cache store.'));
+
+    const actions = ui.el('div', { class: 'modal-actions' });
+    const cancel = ui.el('button', { class: 'btn' }, 'Cancel');
+    const go = ui.el('button', { class: 'btn btn-primary' }, '🧹 Purge');
+    actions.append(cancel, go);
+    body.appendChild(actions);
+
+    cancel.onclick = m.close;
+    go.onclick = async () => {
+      go.disabled = true;
+      const scope = allSel.checked ? 'all' : 'site';
+      try {
+        const r = await api.post(`/wordpress/${id}/cache`, { scope });
+        m.close();
+        const lines = [...(r.done || [])];
+        for (const n of r.notes || []) lines.push(`note: ${n}`);
+        showOutput('Cache purged', lines.join('\n'));
+        refresh();
+      } catch (e) {
+        ui.toast(e.message, true);
+        go.disabled = false;
+      }
+    };
   }
 
   function adminPwModal(root, me, id, st) {
