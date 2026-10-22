@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "reset-password": "node reset-password.js"
+    "reset-password": "node reset-password.js",
+    "bump-version": "node scripts/bump-version.js"
   },
   "engines": {
     "node": ">=18"

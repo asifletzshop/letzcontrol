@@ -1,0 +1,88 @@
+name: Bump version
+
+# The panel compares its installed version with the one in package.json on
+# the default branch, and offers an update when the repository's is newer.
+# This project ships by pushing to a branch rather than by cutting releases,
+# so without this the version never moves and an install never learns that
+# anything changed.
+#
+# Every push to main moves the version, tags it, and publishes a release for
+# it. The bump is a patch release by default, because a panel update is
+# something people install from an existing install and a surprise major
+# version is not a kindness. The type can be set per run with the BUMP
+# environment variable, or by hand with workflow_dispatch.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Which part of the version to move'
+        required: false
+        default: patch
+        type: choice
+        options: [patch, minor, major]
+
+permissions:
+  contents: write
+
+# Two pushes at once would race for the version. Let them queue instead.
+concurrency:
+  group: bump-version
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    # The bump commit this workflow makes is itself a push to main. GitHub
+    # does not run workflows for pushes made with GITHUB_TOKEN, so it cannot
+    # loop - but a fork using a personal token could, so the guard is here
+    # as well.
+    if: "!startsWith(github.event.head_commit.message, 'Bump version to')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Work out the new version
+        id: bump
+        env:
+          BUMP: ${{ inputs.bump || 'patch' }}
+        run: |
+          VERSION="$(node scripts/bump-version.js "$BUMP")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Bumping to $VERSION"
+
+      - name: Commit it
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json
+          if git diff --cached --quiet; then
+            echo 'The version was already current.'
+            exit 0
+          fi
+          git commit -m "Bump version to ${{ steps.bump.outputs.version }}"
+          git push origin HEAD:main
+
+      - name: Tag it
+        run: |
+          git tag -a "v${{ steps.bump.outputs.version }}" -m "Version ${{ steps.bump.outputs.version }}"
+          git push origin "v${{ steps.bump.outputs.version }}"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: "v${{ steps.bump.outputs.version }}"
+        run: |
+          gh release create "$TAG" \
+            --title "Version ${TAG#v}" \
+            --generate-notes \
+            || echo "The release for $TAG already exists - continuing."
+        # A release that fails to publish is not a reason to fail the
+        # version bump: the tag is what the panel's updater cares about, and
+        # that is already pushed by the time this runs.
+        continue-on-error: true
