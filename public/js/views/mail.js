@@ -6,6 +6,65 @@ window.MailView = (() => {
   let recordsView = null; // { domain, data } from GET /mail/records/:domain
   let domainFilter = 'all'; // website selected in the mailboxes dropdown
   let search = '';          // the mailbox search box
+  let activeTab = 'mailboxes'; // which panel is showing
+
+  /* The tabs this page is split into.
+   *
+   *  Mailboxes is first because it is what the page is for: the addresses
+   *  themselves. Webmail over https sits next to it, because it is how those
+   *  addresses are read. Everything operational - health, the queue, client
+   *  settings and DNS - shares the last panel, so the first two stay clean.
+   *
+   *  The badge on Mailboxes is filled in once the data is in, so the bar is
+   *  worth reading before clicking. */
+  const TABS = [
+    { id: 'mailboxes', label: 'Mailboxes', icon: '✉️' },
+    { id: 'webmail', label: 'Webmail over https', icon: '🌐' },
+    { id: 'server', label: 'Mail server', icon: '⚙️' }
+  ];
+
+  /** The tab bar, plus the panel it swaps. `mount(id)` builds that panel. */
+  function tabBar(mount) {
+    const bar = ui.el('div', { class: 'tab-bar', role: 'tablist', 'aria-label': 'Mail sections' });
+    const panel = ui.el('div', { class: 'tab-panel' });
+    const buttons = new Map();
+
+    for (const t of TABS) {
+      const btn = ui.el('button', {
+        class: 'tab-btn', role: 'tab', 'data-tab': t.id, type: 'button'
+      }, ui.el('span', {}, t.icon), ui.el('span', {}, t.label));
+      btn.onclick = () => show(t.id);
+      buttons.set(t.id, btn);
+      bar.appendChild(btn);
+    }
+
+    /** Swap the visible panel. The choice survives a re-render. */
+    function show(id) {
+      if (!TABS.some((t) => t.id === id)) id = TABS[0].id;
+      activeTab = id;
+      for (const [bid, btn] of buttons) {
+        const on = bid === id;
+        btn.classList.toggle('on', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      }
+      panel.innerHTML = '';
+      panel.appendChild(mount(id));
+    }
+
+    /* A badge, so the bar carries information: how many addresses, and
+     * whether anything in the queue is waiting on a person. */
+    const setBadge = (id, text, warn) => {
+      const btn = buttons.get(id);
+      if (!btn) return;
+      let b = btn.querySelector('.tab-badge');
+      if (!text) { if (b) b.remove(); return; }
+      if (!b) { b = ui.el('span', { class: 'tab-badge' }); btn.appendChild(b); }
+      b.textContent = text;
+      b.classList.toggle('warn', !!warn);
+    };
+
+    return { bar, panel, show, setBadge };
+  }
 
   function genPw() {
     const a = new Uint8Array(15);
@@ -65,73 +124,91 @@ window.MailView = (() => {
       api.get('/mail/mailboxes'),
       api.get('/sites')
     ]);
+    const totalStorage = Object.values(storage || {}).reduce((a, b) => a + (Number(b) || 0), 0);
+    const queueCount = (status.queue && status.queue.count) || 0;
+    const webmailUrl = status.webmail.installed ? status.webmail.url : null;
 
+    /* The toolbar is page-level: create is a Mailboxes action, but it is the
+     * one thing everyone comes here to do, so it stays reachable regardless
+     * of which panel is open. */
     root.appendChild(ui.el('div', { class: 'toolbar' },
       ui.el('button', {
         class: 'btn btn-primary',
         onclick: () => mailboxModal(root, me, null, sites, domainFilter === 'all' ? null : domainFilter)
       }, '+ New mailbox'),
       ui.el('span', { class: 'spacer' }),
-      status.webmail.installed
-        ? ui.el('a', { class: 'btn', href: status.webmail.url, target: '_blank', rel: 'noopener' }, '🌐 Webmail ↗')
+      webmailUrl
+        ? ui.el('a', { class: 'btn', href: webmailUrl, target: '_blank', rel: 'noopener' }, '🌐 Webmail ↗')
         : null,
       ui.el('button', { class: 'btn', onclick: () => load(root, me) }, '↻ Refresh')
     ));
 
-    /* ---------- the numbers ---------- */
-    const totalStorage = Object.values(storage || {}).reduce((a, b) => a + (Number(b) || 0), 0);
-    const queueCount = (status.queue && status.queue.count) || 0;
+    /* ---------- the tabs ---------- */
+    const tabs = tabBar((id) => {
+      if (id === 'mailboxes') {
+        /* Mailboxes: the addresses, with the numbers that describe them. */
+        const box = ui.el('div', {});
+        /* Held rather than looked up by id: the card is right here, and a
+         * direct reference works without a querySelector that understands
+         * id selectors. */
+        const storedCard = statCard('st-count', 'Mail stored', '💾', 'violet', 'on disk for this server');
+        box.appendChild(ui.el('div', { class: 'hero-grid', style: 'margin-bottom:16px' },
+          statCard('mb-count', 'Mailboxes', '✉️', 'green', `across ${domains.length} domain(s)`),
+          statCard('dom-count', 'Mail domains', '🌐', 'cyan', `server ${status.serverIp}`),
+          statCard('q-count', 'In the queue', '⏳', queueCount ? 'amber' : 'green',
+            queueCount ? 'waiting to be delivered' : 'nothing waiting'),
+          storedCard
+        ));
+        /* The other three counts are static text in their subtitle; this one
+         * is a measured figure, so it goes in after the card exists. */
+        storedCard.querySelector('.stat-value').textContent = bytes(totalStorage);
+        if (queueCount) box.appendChild(queueCard(root, me, status.queue));
+        box.appendChild(mailboxSection(root, me, mailboxes, storage, sites, webmailUrl));
+        return box;
+      }
 
-    root.appendChild(ui.el('div', { class: 'hero-grid', style: 'margin-bottom:16px' },
-      statCard('mb-count', 'Mailboxes', '✉️', 'green', `across ${domains.length} domain(s)`),
-      statCard('dom-count', 'Mail domains', '🌐', 'cyan', `server ${status.serverIp}`),
-      statCard('q-count', 'In the queue', '⏳', queueCount ? 'amber' : 'green',
-        queueCount ? 'waiting to be delivered' : 'nothing waiting'),
-      statCard('st-count', 'Mail stored', '💾', 'violet', 'on disk for this server')
-    ));
+      if (id === 'webmail') return webmailSection(root, me);
 
-    /* ---------- service health and client settings ---------- */
-    const svc = status.services;
-    const svcRow = (name, state, detail) => ui.el('div', { class: 'svc-row' },
-      ui.el('span', { class: 'dot ' + (state === 'active' ? 'ok' : 'bad') }),
-      ui.el('span', { class: 'svc-name' }, name),
-      ui.el('span', { class: 'svc-state ' + (state === 'active' ? 'ok' : 'bad') }, state),
-      detail ? ui.el('span', { class: 'text-dim', style: 'font-size:11.5px;margin-left:8px' }, detail) : null);
+      /* Mail server: everything operational. */
+      const box = ui.el('div', {});
+      const svc = status.services;
+      const svcRow = (name, state, detail) => ui.el('div', { class: 'svc-row' },
+        ui.el('span', { class: 'dot ' + (state === 'active' ? 'ok' : 'bad') }),
+        ui.el('span', { class: 'svc-name' }, name),
+        ui.el('span', { class: 'svc-state ' + (state === 'active' ? 'ok' : 'bad') }, state),
+        detail ? ui.el('span', { class: 'text-dim', style: 'font-size:11.5px;margin-left:8px' }, detail) : null);
 
-    const health = ui.el('div', { class: 'card' },
-      ui.el('h3', {}, 'Service health'),
-      ui.el('div', { class: 'svc-list' },
-        svcRow('Postfix', svc.postfix, 'SMTP · queues'),
-        svcRow('Dovecot', svc.dovecot, 'IMAP · POP3'),
-        svcRow('OpenDKIM', svc.opendkim, 'signs outgoing mail'),
-        status.webmail.installed ? svcRow('Webmail', svc.nginx, 'Roundcube') : null));
+      const health = ui.el('div', { class: 'card' },
+        ui.el('h3', {}, 'Service health'),
+        ui.el('div', { class: 'svc-list' },
+          svcRow('Postfix', svc.postfix, 'SMTP · queues'),
+          svcRow('Dovecot', svc.dovecot, 'IMAP · POP3'),
+          svcRow('OpenDKIM', svc.opendkim, 'signs outgoing mail'),
+          status.webmail.installed ? svcRow('Webmail', svc.nginx, 'Roundcube') : null));
 
-    const client = ui.el('div', { class: 'card' },
-      ui.el('h3', {}, 'Mail client settings'),
-      ui.el('div', { class: 'client-grid' },
-        clientRow('IMAP (SSL)', `mail.${status.serverIp}`, '993', 'username = the full address'),
-        clientRow('IMAP (STARTTLS)', `mail.${status.serverIp}`, '143', 'username = the full address'),
-        clientRow('SMTP (SSL)', `mail.${status.serverIp}`, '465', 'same username and password'),
-        clientRow('SMTP (STARTTLS)', `mail.${status.serverIp}`, '587', 'same username and password'),
-        clientRow('POP3 (SSL)', `mail.${status.serverIp}`, '995', 'username = the full address')
-      ),
-      ui.el('p', { class: 'text-dim', style: 'font-size:12px;margin:10px 0 0' },
-        'Use the full address (user@domain) as the username. The password is the one set when the mailbox was created.'));
+      const client = ui.el('div', { class: 'card' },
+        ui.el('h3', {}, 'Mail client settings'),
+        ui.el('div', { class: 'client-grid' },
+          clientRow('IMAP (SSL)', `mail.${status.serverIp}`, '993', 'username = the full address'),
+          clientRow('IMAP (STARTTLS)', `mail.${status.serverIp}`, '143', 'username = the full address'),
+          clientRow('SMTP (SSL)', `mail.${status.serverIp}`, '465', 'same username and password'),
+          clientRow('SMTP (STARTTLS)', `mail.${status.serverIp}`, '587', 'same username and password'),
+          clientRow('POP3 (SSL)', `mail.${status.serverIp}`, '995', 'username = the full address')
+        ),
+        ui.el('p', { class: 'text-dim', style: 'font-size:12px;margin:10px 0 0' },
+          'Use the full address (user@domain) as the username. The password is the one set when the mailbox was created.'));
 
-    root.appendChild(ui.el('div', { class: 'ops-grid', style: 'margin-bottom:16px' }, health, client));
+      box.appendChild(ui.el('div', { class: 'ops-grid', style: 'margin-bottom:16px' }, health, client));
+      if (queueCount) box.appendChild(queueCard(root, me, status.queue));
+      dnsCard(box, me, sites, status);
+      return box;
+    });
 
-    /* ---------- the queue ---------- */
-    if (queueCount) root.appendChild(queueCard(root, me, status.queue));
-
-    /* ---------- the webmail over https ---------- */
-    root.appendChild(webmailSection(root, me));
-
-    /* ---------- mailboxes (with a per-website selector) ---- */
-    root.appendChild(mailboxSection(root, me, mailboxes, storage, sites,
-      status.webmail.installed ? status.webmail.url : null));
-
-    /* ---------- DNS records ---------- */
-    dnsCard(root, me, sites, status);
+    root.appendChild(tabs.bar);
+    root.appendChild(tabs.panel);
+    tabs.show(activeTab);
+    tabs.setBadge('mailboxes', String(mailboxes.length));
+    tabs.setBadge('server', queueCount ? `${queueCount} queued` : null, !!queueCount);
   }
 
   /* -------------------------------------------------- the webmail ----- */
@@ -644,7 +721,9 @@ window.MailView = (() => {
   }
 
   return {
-    render: (root, me) => { recordsView = null; return load(root, me); },
-    destroy: () => { recordsView = null; readinessCache.clear(); }
+    /* A fresh visit starts on Mailboxes and forgets any DNS lookup; a tab
+     * switch inside the page calls load() directly and keeps both. */
+    render: (root, me) => { recordsView = null; activeTab = 'mailboxes'; return load(root, me); },
+    destroy: () => { recordsView = null; activeTab = 'mailboxes'; readinessCache.clear(); }
   };
 })();

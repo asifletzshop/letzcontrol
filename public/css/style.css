@@ -304,6 +304,43 @@ kbd {
 .card.hoverable:hover { transform: translateY(-3px); box-shadow: var(--shadow-2); border-color: var(--border-strong); }
 .divider { height: 1px; background: var(--border); margin: 14px 0; }
 
+/* ---------- tabs ---------- */
+/* A page that holds several related panels uses a tab bar so the first view
+ * is not a wall of stacked cards. The bar is its own row above the content,
+ * and only the chosen panel is in the document at a time. */
+.tab-bar {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  padding: 5px; margin-bottom: 18px; width: fit-content; max-width: 100%;
+  background: var(--bg-panel);
+  border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: var(--shadow-1);
+}
+.tab-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 15px; border: 1px solid transparent; border-radius: 9px;
+  background: transparent; color: var(--text-dim);
+  font-size: 13px; font-weight: 600; font-family: inherit; line-height: 1;
+  cursor: pointer; white-space: nowrap;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.tab-btn:hover { background: var(--bg-hover); color: var(--text); }
+.tab-btn:focus-visible { outline: none; border-color: var(--accent-2); }
+.tab-btn.on {
+  background: var(--bg-elev); color: var(--text);
+  border-color: var(--border-strong); box-shadow: 0 1px 0 rgba(0, 0, 0, .35);
+}
+/* A tab that has something worth looking at (a count, a warning) says so on
+ * the bar, so the choice is not blind. */
+.tab-badge {
+  min-width: 18px; padding: 1px 6px; border-radius: 999px;
+  background: rgba(148, 163, 184, .16); color: var(--text-dim);
+  font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.tab-btn.on .tab-badge { background: rgba(52, 211, 153, .18); color: var(--accent); }
+.tab-badge.warn { background: rgba(251, 191, 36, .16); color: var(--amber); }
+.tab-btn[hidden] { display: none; }
+
 /* hero stat cards */
 .hero-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
 .stat-card {
