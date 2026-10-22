@@ -279,11 +279,18 @@ https://1.2.3.4:2088/    webmail
 https://1.2.3.4:2089/    phpMyAdmin
 ```
 
-Plain HTTP stays on those ports beside https. The websites mount the webmail at
-`http://127.0.0.1:2088`, so turning that off would take the customers' webmail
-with it — one nginx server block with both listeners is what nginx is for. The
-allow-list applies to both: nginx checks it after the handshake, so an address
-that gets a 403 over http gets the same 403 over https.
+Plain HTTP is **not** served on these ports once there is a certificate — that
+is nginx rather than a choice. SSL is a property of the listening socket, so a
+port is either one thing or the other, and a plain HTTP request to it comes
+back as `400 The plain HTTP request was sent to HTTPS port`. The panel's own
+port can do both because it is Node and reads the first byte of each
+connection; nginx cannot.
+
+That disturbs nothing the websites depend on: the webmail mounts proxy to the
+port over **https**, which is what the panel writes for them
+(`lib/sites.js`), and the allow-list covers the port and the mounts alike —
+nginx checks it after the handshake, so an address that gets a 403 gets the
+same 403 either way.
 
 The panel puts both vhosts in step with `tls` on every start, and the Setup
 Wizard does the same just after it writes them. Nothing is written until the
@@ -319,8 +326,8 @@ has switches for NTP and an immediate re-sync. Note that PHP keeps its own
   databases, and capped by their plan.
 - The webmail (`:2088`) and phpMyAdmin (`:2089`) are open to the whole
   internet and are scanned within minutes, so nginx restricts them to the
-  addresses that administer the box; everyone else gets a 403, over **https**
-  as much as over http, because both are served on the same ports
+  addresses that administer the box; everyone else gets a 403. Both ports
+  serve **https** only, and the list is checked after the handshake
   (*Admin-tool ports over https*). The list is
   in *Settings → Webmail & phpMyAdmin access*, which also shows the address
   the panel sees you arriving from and offers to add it — an operator's own
