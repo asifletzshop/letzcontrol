@@ -84,6 +84,12 @@ timer is a bad idea even when it is your own repository. A bad push would
 take every install down at once, with nobody watching. So: detect, tell
 you, let you press the button, and back up before touching anything.
 
+An update from the panel backs up `config.json` and `data/` first, into
+`data/backups/pre-update-<timestamp>.tar.gz`, and says so in the log. If
+the backup fails, the update says that too and carries on without one — a
+warning is better than a silent skip, because a silent skip leaves you
+believing you have a copy.
+
 **The version moves on every push.** This project ships by pushing to a
 branch rather than by cutting releases, so a workflow bumps `package.json`,
 commits it, tags it and publishes a release for it. That is what lets an
