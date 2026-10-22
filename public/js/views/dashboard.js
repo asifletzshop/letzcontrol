@@ -1,6 +1,6 @@
 'use strict';
 /* Dashboard: hero stats with sparklines, a live performance panel, website
- * health, service health, system information and quick actions.
+ * health, service health and system information.
  *
  * Everything here reads its colours from the CSS custom properties rather
  * than from literals, so the cPanel theme gets its own palette for free -
@@ -465,7 +465,7 @@ window.DashboardView = (() => {
 
   /* A drag grip in each block's corner. Only the grip starts a drag: the
    * blocks contain charts, buttons and tables, and making the whole block
-   * draggable meant a click on a chart or a quick action began a reorder
+   * draggable meant a click on a chart or a button began a reorder
    * instead of doing its job. */
   function addGrip(w, label) {
     const grip = ui.el('span', {
