@@ -119,7 +119,14 @@ window.SettingsView = (() => {
 
     for (const t of THEMES) {
       const sw = ui.el('span', { class: 'theme-swatch' });
-      for (const c of t.swatch) ui.el('i').style.background = c, sw.appendChild(ui.el('i'));
+      /* One dot per colour of the palette. (This used to be written as a
+       * comma expression that coloured one element and appended another, so
+       * every swatch came out grey.) */
+      for (const c of t.swatch) {
+        const dot = ui.el('i');
+        dot.style.background = c;
+        sw.appendChild(dot);
+      }
       const b = ui.el('button', { class: 'theme-opt', type: 'button', 'data-theme-id': t.id },
         sw,
         ui.el('span', { class: 'theme-name' }, t.name),
@@ -796,6 +803,16 @@ window.SettingsView = (() => {
     const restore = ui.el('button', { 'data-setup-restore': '', class: 'btn btn-sm', style: 'display:none;margin-top:10px' });
     restore.onclick = () => { location.hash = '#/setup'; };
 
+    /* The block below is what gets pasted into a bug report, so it wants to be
+     * copied whole rather than retyped from a screenshot. */
+    const copy = ui.el('button', { class: 'btn btn-sm', title: 'Copy the system report' }, '⧉ Copy');
+    copy.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(box.textContent);
+        ui.toast('System report copied');
+      } catch { ui.toast('The browser would not allow copying', true); }
+    };
+
     api.get('/settings/system').then((s) => {
       box.textContent = [
         `hostname : ${s.hostname}`,
@@ -814,7 +831,10 @@ window.SettingsView = (() => {
     }).catch((e) => { box.textContent = 'Could not load: ' + e.message; });
 
     return ui.el('div', { class: 'card' },
-      ui.el('h3', {}, 'System'),
+      ui.el('div', { class: 'toolbar', style: 'margin-bottom:8px' },
+        ui.el('h3', {}, 'System'),
+        ui.el('span', { class: 'spacer' }),
+        copy),
       box,
       restore
     );
