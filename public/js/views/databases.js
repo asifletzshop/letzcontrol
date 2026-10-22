@@ -113,7 +113,10 @@ window.DatabasesView = (() => {
       else ui.toast('phpMyAdmin is not installed yet', true);
       return;
     }
-    const base = `http://${location.hostname}:2089/`;
+    /* The scheme is the server's answer, not the browser's guess: :2089 is
+     * https-only once a certificate exists and an http:// here would land on a
+     * socket that cannot answer plain http. */
+    const base = pma.url || `https://${location.hostname}:2089/`;
     // Toolbar entry with exactly one database: open THAT database, not the
     // phpMyAdmin homepage (users clicking here expect "their" database).
     if (!dbName && dbs.length === 1) {

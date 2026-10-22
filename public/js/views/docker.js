@@ -379,13 +379,26 @@ window.DockerView = (() => {
     );
   }
 
+  /* Some containers only speak TLS on their published port - Portainer on 9443
+   * is the common one. Sending http:// to a TLS socket is not a connection that
+   * quietly upgrades: the far end answers 400 "The plain HTTP request was sent
+   * to HTTPS port" and the browser shows that instead of the app, which reads
+   * as the install having failed. So the scheme is asked, not assumed. */
+  const TLS_ONLY = [
+    { port: 9443, image: /portainer/i }
+  ];
+  function schemeFor(image, port) {
+    return TLS_ONLY.some((t) => t.port === port && t.image.test(image)) ? 'https' : 'http';
+  }
+
   /* Where the container can be reached from a browser, when it publishes a
    * port. CasaOS's "Open" does exactly this - it is the point of an app tile. */
   function publishedUrl(c) {
     const first = String(c.ports || '').split(',')[0].trim();
     const m = first.match(/^(\d+)->/);
     if (!m) return null;
-    return `http://${location.hostname || 'localhost'}:${m[1]}`;
+    const port = Number(m[1]);
+    return `${schemeFor(c.image || '', port)}://${location.hostname || 'localhost'}:${port}`;
   }
 
   /* The "+" CasaOS puts at the end of the grid: it goes to the store, which is
@@ -640,22 +653,22 @@ window.DockerView = (() => {
    * line about what it is, and an Install that fills the run form in with the
    * ports, volumes and environment that app normally wants. */
   const STORE = [
-    { name: 'Nginx', icon: 'nginx', cat: 'Web', image: 'nginx:alpine', desc: 'Web server and reverse proxy', ports: '8080:80', vol: '/var/www/site:/usr/share/nginx/html:ro' },
-    { name: 'Caddy', icon: 'caddy', cat: 'Web', image: 'caddy:alpine', desc: 'Reverse proxy with automatic HTTPS', ports: '8080:80,8443:443' },
-    { name: 'WordPress', icon: 'wordpress', cat: 'Web', image: 'wordpress:latest', desc: 'Publish a site in one click', ports: '8080:80', vol: '/var/www/wordpress:/var/www/html' },
-    { name: 'MariaDB', icon: 'mariadb', cat: 'Database', image: 'mariadb:11', desc: 'SQL database for WordPress and friends', ports: '3306:3306', vol: '/var/lib/mysql:/var/lib/mysql', env: 'MYSQL_ROOT_PASSWORD=change-me\nMYSQL_DATABASE=app' },
+    { name: 'Nginx', icon: 'nginx', cat: 'Web', image: 'nginx:alpine', desc: 'Web server and reverse proxy', ports: '8090:80', vol: '/var/www/site:/usr/share/nginx/html:ro' },
+    { name: 'Caddy', icon: 'caddy', cat: 'Web', image: 'caddy:alpine', desc: 'Reverse proxy with automatic HTTPS', ports: '8091:80,8443:443' },
+    { name: 'WordPress', icon: 'wordpress', cat: 'Web', image: 'wordpress:latest', desc: 'Publish a site in one click', ports: '8092:80', vol: '/var/www/wordpress:/var/www/html' },
+    { name: 'MariaDB', icon: 'mariadb', cat: 'Database', image: 'mariadb:11', desc: 'SQL database for WordPress and friends', ports: '13306:3306', vol: '/var/lib/mysql:/var/lib/mysql', env: 'MYSQL_ROOT_PASSWORD=change-me\nMYSQL_DATABASE=app' },
     { name: 'PostgreSQL', icon: 'postgres', cat: 'Database', image: 'postgres:16', desc: 'Advanced SQL database', ports: '5432:5432', vol: '/var/lib/postgresql/data:/var/lib/postgresql/data', env: 'POSTGRES_PASSWORD=change-me' },
-    { name: 'Redis', icon: 'redis', cat: 'Database', image: 'redis:7-alpine', desc: 'Cache and message broker', ports: '6379:6379' },
+    { name: 'Redis', icon: 'redis', cat: 'Database', image: 'redis:7-alpine', desc: 'Cache and message broker', ports: '16379:6379' },
     { name: 'Portainer', icon: 'portainer', cat: 'Tools', image: 'portainer/portainer-ce:latest', desc: 'Manage Docker from a browser', ports: '9443:9443', vol: '/var/run/docker.sock:/var/run/docker.sock', vol2: '/data:/data' },
     { name: 'phpMyAdmin', icon: 'phpmyadmin', cat: 'Tools', image: 'phpmyadmin:latest', desc: 'MySQL over the web', ports: '8081:80' },
-    { name: 'Uptime Kuma', icon: 'uptime', cat: 'Monitoring', image: 'louislam/uptime-kuma:1', desc: 'Get told when a service breaks', ports: '3001:3001', vol: '/var/lib/uptime-kuma:/app/data' },
+    { name: 'Uptime Kuma', icon: 'uptime', cat: 'Monitoring', image: 'louislam/uptime-kuma:1', desc: 'Get told when a service breaks', ports: '13001:3001', vol: '/var/lib/uptime-kuma:/app/data' },
     { name: 'Grafana', icon: 'grafana', cat: 'Monitoring', image: 'grafana/grafana:latest', desc: 'Dashboards from metrics', ports: '3000:3000', vol: '/var/lib/grafana:/var/lib/grafana' },
     { name: 'Prometheus', icon: 'prometheus', cat: 'Monitoring', image: 'prom/prometheus:latest', desc: 'Time-series metrics', ports: '9090:9090', vol: '/var/lib/prometheus:/prometheus' },
-    { name: 'Pi-hole', icon: 'pihole', cat: 'Network', image: 'pihole/pihole:latest', desc: 'Network-wide ad blocking', ports: '53:53/tcp,53:53/udp,8082:80', vol: '/etc/pihole:/etc/pihole' },
+    { name: 'Pi-hole', icon: 'pihole', cat: 'Network', image: 'pihole/pihole:latest', desc: 'Network-wide ad blocking', ports: '1053:53/tcp,1053:53/udp,8082:80', vol: '/etc/pihole:/etc/pihole' },
     { name: 'WireGuard', icon: 'wireguard', cat: 'Network', image: 'linuxserver/wireguard:latest', desc: 'VPN into this server', ports: '51820:51820/udp', vol: '/etc/wireguard:/etc/wireguard' },
     { name: 'Jellyfin', icon: 'jellyfin', cat: 'Media', image: 'jellyfin/jellyfin:latest', desc: 'Stream your own media', ports: '8096:8096', vol: '/var/media:/media', vol2: '/var/lib/jellyfin:/config' },
     { name: 'Immich', icon: 'immich', cat: 'Media', image: 'ghcr.io/immich-app/immich-server:latest', desc: 'A photo library like the big ones', ports: '2283:2283', vol: '/var/lib/immich:/usr/src/app/upload' },
-    { name: 'Nextcloud', icon: 'nextcloud', cat: 'Storage', image: 'nextcloud:latest', desc: 'Files, calendar and contacts', ports: '8080:80', vol: '/var/www/nextcloud:/var/www/html' },
+    { name: 'Nextcloud', icon: 'nextcloud', cat: 'Storage', image: 'nextcloud:latest', desc: 'Files, calendar and contacts', ports: '8093:80', vol: '/var/www/nextcloud:/var/www/html' },
     { name: 'MinIO', icon: 'minio', cat: 'Storage', image: 'minio/minio:latest', desc: 'S3-compatible object storage', ports: '9001:9001,9000:9000', vol: '/var/lib/minio:/data', env: 'MINIO_ROOT_USER=admin\nMINIO_ROOT_PASSWORD=change-me' },
     { name: 'Filebrowser', icon: 'filebrowser', cat: 'Storage', image: 'filebrowser/filebrowser:latest', desc: 'Browse files in a browser', ports: '8083:80', vol: '/srv:/srv' },
     { name: 'Syncthing', icon: 'syncthing', cat: 'Storage', image: 'syncthing/syncthing:latest', desc: 'Peer-to-peer file sync', ports: '8384:8384,22000:22000/tcp,22000:22000/udp', vol: '/var/syncthing:/var/syncthing' },
