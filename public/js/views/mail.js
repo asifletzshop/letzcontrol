@@ -1,9 +1,11 @@
 'use strict';
-/* Mail view: mailboxes (create / password / delete), service status,
- * DKIM key generation and the DNS records each domain needs. */
+/* Mail view: mailboxes (create / password / delete), service health, the
+ * outgoing queue, per-domain mail readiness, client settings and the DNS
+ * records each domain needs. */
 window.MailView = (() => {
   let recordsView = null; // { domain, data } from GET /mail/records/:domain
   let domainFilter = 'all'; // website selected in the mailboxes dropdown
+  let search = '';          // the mailbox search box
 
   function genPw() {
     const a = new Uint8Array(15);
@@ -15,6 +17,34 @@ window.MailView = (() => {
     const dl = ui.el('datalist', { id });
     for (const s of sites) dl.appendChild(ui.el('option', { value: s.domain }));
     return dl;
+  }
+
+  const bytes = (n) => {
+    if (n === null || n === undefined) return '–';
+    const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let v = Number(n);
+    let i = 0;
+    while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+    return `${v.toFixed(i ? 1 : 0)} ${u[i]}`;
+  };
+
+  const ago = (ms) => {
+    if (!ms) return '–';
+    const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    if (s < 60) return `${s}s ago`;
+    if (s < 3600) return `${Math.round(s / 60)}m ago`;
+    if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+    return `${Math.round(s / 86400)}d ago`;
+  };
+
+  /* A card that shows one number, the way the dashboard does. */
+  function statCard(id, label, icon, tone, sub) {
+    return ui.el('div', { class: 'stat-card tone-' + tone },
+      ui.el('div', { class: 'stat-head' },
+        ui.el('span', { class: 'stat-icon' }, icon),
+        ui.el('div', { class: 'stat-label' }, label)),
+      ui.el('div', { class: 'stat-value', id }, '–'),
+      ui.el('div', { class: 'stat-sub' }, sub || ''));
   }
 
   async function load(root, me) {
@@ -31,7 +61,7 @@ window.MailView = (() => {
       return;
     }
 
-    const [{ mailboxes }, { sites }] = await Promise.all([
+    const [{ mailboxes, storage, domains }, { sites }] = await Promise.all([
       api.get('/mail/mailboxes'),
       api.get('/sites')
     ]);
@@ -40,33 +70,117 @@ window.MailView = (() => {
       ui.el('button', {
         class: 'btn btn-primary',
         onclick: () => mailboxModal(root, me, null, sites, domainFilter === 'all' ? null : domainFilter)
-      }, '+ Create mailbox'),
+      }, '+ New mailbox'),
       ui.el('span', { class: 'spacer' }),
       status.webmail.installed
-        ? ui.el('a', { class: 'btn', href: status.webmail.url, target: '_blank' }, '🌐 Webmail ↗')
+        ? ui.el('a', { class: 'btn', href: status.webmail.url, target: '_blank', rel: 'noopener' }, '🌐 Webmail ↗')
         : null,
       ui.el('button', { class: 'btn', onclick: () => load(root, me) }, '↻ Refresh')
     ));
 
-    /* ---- services ---- */
-    const svc = status.services;
-    const svcBadge = (label, state) => ui.el('span', { style: 'margin-right:10px' },
-      `${label}: `, ui.badge(state === 'active' ? 'active' : state, state === 'active' ? 'green' : 'red'));
-    const svcLine = [svcBadge('Postfix', svc.postfix), svcBadge('Dovecot', svc.dovecot), svcBadge('OpenDKIM', svc.opendkim)];
-    if (status.webmail.installed) svcLine.push(svcBadge('Webmail', svc.nginx));
-    root.appendChild(ui.el('div', { class: 'card', style: 'margin-bottom:16px' },
-      ui.el('h3', {}, 'Mail services'),
-      ui.el('div', {}, ...svcLine),
-      ui.el('div', { class: 'text-dim', style: 'margin-top:8px' },
-        `IMAP 143/993 · POP3 110/995 · SMTP 25 / 587 / 465 · ${status.mailboxCount} mailbox(es)` +
-        (status.webmail.installed ? ` · webmail on ${status.webmail.url}` : ''))));
+    /* ---------- the numbers ---------- */
+    const totalStorage = Object.values(storage || {}).reduce((a, b) => a + (Number(b) || 0), 0);
+    const queueCount = (status.queue && status.queue.count) || 0;
 
-    /* ---- mailboxes (with a per-website selector) ---- */
-    root.appendChild(mailboxSection(root, me, mailboxes, sites,
+    root.appendChild(ui.el('div', { class: 'hero-grid', style: 'margin-bottom:16px' },
+      statCard('mb-count', 'Mailboxes', '✉️', 'green', `across ${domains.length} domain(s)`),
+      statCard('dom-count', 'Mail domains', '🌐', 'cyan', `server ${status.serverIp}`),
+      statCard('q-count', 'In the queue', '⏳', queueCount ? 'amber' : 'green',
+        queueCount ? 'waiting to be delivered' : 'nothing waiting'),
+      statCard('st-count', 'Mail stored', '💾', 'violet', 'on disk for this server')
+    ));
+
+    /* ---------- service health and client settings ---------- */
+    const svc = status.services;
+    const svcRow = (name, state, detail) => ui.el('div', { class: 'svc-row' },
+      ui.el('span', { class: 'dot ' + (state === 'active' ? 'ok' : 'bad') }),
+      ui.el('span', { class: 'svc-name' }, name),
+      ui.el('span', { class: 'svc-state ' + (state === 'active' ? 'ok' : 'bad') }, state),
+      detail ? ui.el('span', { class: 'text-dim', style: 'font-size:11.5px;margin-left:8px' }, detail) : null);
+
+    const health = ui.el('div', { class: 'card' },
+      ui.el('h3', {}, 'Service health'),
+      ui.el('div', { class: 'svc-list' },
+        svcRow('Postfix', svc.postfix, 'SMTP · queues'),
+        svcRow('Dovecot', svc.dovecot, 'IMAP · POP3'),
+        svcRow('OpenDKIM', svc.opendkim, 'signs outgoing mail'),
+        status.webmail.installed ? svcRow('Webmail', svc.nginx, 'Roundcube') : null));
+
+    const client = ui.el('div', { class: 'card' },
+      ui.el('h3', {}, 'Mail client settings'),
+      ui.el('div', { class: 'client-grid' },
+        clientRow('IMAP (SSL)', `mail.${status.serverIp}`, '993', 'username = the full address'),
+        clientRow('IMAP (STARTTLS)', `mail.${status.serverIp}`, '143', 'username = the full address'),
+        clientRow('SMTP (SSL)', `mail.${status.serverIp}`, '465', 'same username and password'),
+        clientRow('SMTP (STARTTLS)', `mail.${status.serverIp}`, '587', 'same username and password'),
+        clientRow('POP3 (SSL)', `mail.${status.serverIp}`, '995', 'username = the full address')
+      ),
+      ui.el('p', { class: 'text-dim', style: 'font-size:12px;margin:10px 0 0' },
+        'Use the full address (user@domain) as the username. The password is the one set when the mailbox was created.'));
+
+    root.appendChild(ui.el('div', { class: 'ops-grid', style: 'margin-bottom:16px' }, health, client));
+
+    /* ---------- the queue ---------- */
+    if (queueCount) root.appendChild(queueCard(root, me, status.queue));
+
+    /* ---------- mailboxes (with a per-website selector) ---- */
+    root.appendChild(mailboxSection(root, me, mailboxes, storage, sites,
       status.webmail.installed ? status.webmail.url : null));
 
-    /* ---- DNS records ---- */
+    /* ---------- DNS records ---------- */
     dnsCard(root, me, sites, status);
+  }
+
+  function clientRow(protocol, host, port, note) {
+    return ui.el('div', { class: 'client-row' },
+      ui.el('div', { class: 'client-name' }, protocol),
+      ui.el('div', { class: 'client-endpoint' },
+        ui.el('span', { class: 'mono' }, host),
+        ui.el('span', { class: 'client-port mono' }, port)),
+      ui.el('div', { class: 'text-dim', style: 'font-size:11.5px' }, note));
+  }
+
+  /* -------------------------------------------------- the queue -------- */
+  function queueCard(root, me, queue) {
+    const card = ui.el('div', { class: 'card', style: 'margin-bottom:16px' });
+    card.appendChild(ui.el('h3', {},
+      `Messages waiting to go out (${queue.count})`,
+      ui.el('span', { class: 'spacer' }),
+      queue.oldestAt ? ui.el('span', { class: 'text-dim', style: 'text-transform:none;letter-spacing:0' },
+        `oldest ${ago(queue.oldestAt)}`) : null));
+
+    const list = ui.el('div', { class: 'queue-list' });
+    for (const m of queue.messages) {
+      for (const r of m.recipients) {
+        list.appendChild(ui.el('div', { class: 'queue-row' },
+          ui.el('span', { class: 'dot warn' }),
+          ui.el('div', { class: 'queue-body' },
+            ui.el('div', { class: 'queue-to mono' }, r.address || m.sender),
+            ui.el('div', { class: 'queue-reason' }, r.reason || 'no reason given')),
+          ui.el('span', { class: 'text-dim queue-when' }, ago(m.arrivedAt))));
+      }
+    }
+    card.appendChild(list);
+
+    card.appendChild(ui.el('p', { class: 'text-dim', style: 'font-size:12.5px;margin:12px 0 0' },
+      'A message stays here until the receiving server accepts it. Most of the time the '
+      + 'reason is a domain whose MX record points at a host that does not answer.'));
+
+    const flush = ui.el('button', { class: 'btn btn-sm btn-danger', style: 'margin-top:10px' }, '🗑 Empty the queue');
+    flush.onclick = async () => {
+      if (!(await ui.confirmBox(
+        `Delete all ${queue.count} waiting message(s)? They will not be delivered. `
+        + 'Fix the DNS first, otherwise the next message goes to the same place.',
+        { okText: 'Empty the queue' }))) return;
+      flush.disabled = true;
+      try {
+        const r = await api.post('/mail/queue/flush');
+        ui.toast(r.message || 'The queue was emptied');
+        load(root, me);
+      } catch (e) { ui.toast(e.message, true); flush.disabled = false; }
+    };
+    card.appendChild(flush);
+    return card;
   }
 
   /* -------------------------------------------------- mailboxes section -- */
@@ -76,15 +190,20 @@ window.MailView = (() => {
     return [...set].sort();
   }
 
-  /** Heading + website dropdown + table. Rebuilt in place when the dropdown
-   *  changes, so only this section re-renders (not the whole page). */
-  function mailboxSection(root, me, mailboxes, sites, webmailUrl) {
+  /** Heading + website dropdown + the mailboxes, grouped by domain.
+   *
+   *  Grouped, because a domain is the unit that matters: it has its own DNS,
+   *  its own DKIM key and its own storage, and a flat list of addresses
+   *  scatters those apart. */
+  function mailboxSection(root, me, mailboxes, storage, sites, webmailUrl) {
     const box = ui.el('div', {});
     const rebuild = () => {
       box.innerHTML = '';
       const shown = domainFilter === 'all'
         ? mailboxes
         : mailboxes.filter((m) => m.domain === domainFilter);
+      const q = search.trim().toLowerCase();
+      const filtered = q ? shown.filter((m) => m.username.toLowerCase().includes(q)) : shown;
 
       const sel = ui.el('select', { style: 'max-width:260px', 'aria-label': 'Website' },
         ui.el('option', { value: 'all' }, 'All websites'),
@@ -93,57 +212,144 @@ window.MailView = (() => {
       if (sel.value !== domainFilter) { domainFilter = sel.value; } // selection vanished (site removed)
       sel.onchange = () => { domainFilter = sel.value; rebuild(); };
 
-      box.appendChild(ui.el('div', { style: 'display:flex;align-items:center;gap:12px;margin:18px 0 8px;flex-wrap:wrap' },
+      const searchIn = ui.el('input', {
+        type: 'search', placeholder: 'Search addresses…', value: search,
+        style: 'max-width:220px'
+      });
+      searchIn.oninput = () => {
+        search = searchIn.value;
+        // Rebuild the list, but keep the caret in the search box.
+        rebuild();
+        const again = box.querySelector('input[type=search]');
+        if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+      };
+
+      box.appendChild(ui.el('div', { class: 'section-head' },
         ui.el('h3', { style: 'margin:0' },
           domainFilter === 'all'
             ? `Mailboxes (${mailboxes.length})`
             : `Mailboxes for ${domainFilter} (${shown.length})`),
+        ui.el('span', { class: 'spacer' }),
         ui.el('span', { class: 'text-dim', style: 'font-size:12px' }, 'Website:'),
-        sel
+        sel,
+        searchIn
       ));
 
-      if (!shown.length) {
+      if (!mailboxes.length) {
         box.appendChild(ui.el('div', { class: 'card empty' },
-          domainFilter === 'all'
-            ? 'No mailboxes yet. Create one above - the full address (user@domain) is also the webmail login.'
-            : `No mailboxes for ${domainFilter} yet. Create one above - its domain is preselected.`));
+          'No mailboxes yet. Create one above - the full address (user@domain) is also the webmail login.'));
+        return;
+      }
+      if (!filtered.length) {
+        box.appendChild(ui.el('div', { class: 'card empty' },
+          q ? `No address matches “${q}”.` : `No mailboxes for ${domainFilter} yet.`));
         return;
       }
 
-      const rows = shown.map((mb) => ui.el('tr', {},
-        ui.el('td', { class: 'mono' }, mb.username),
-        ui.el('td', { class: 'text-dim' }, mb.domain),
-        ui.el('td', {}, new Date(mb.created_at).toLocaleDateString()),
-        ui.el('td', {},
-          // Opens webmail already pointed at THIS mailbox: Roundcube
-          // prefills the login form from ?_user=, so the person only types
-          // their password instead of hunting for the right address.
-          webmailUrl ? ui.el('a', {
-            class: 'btn btn-sm',
-            href: `${webmailUrl}?_task=login&_user=${encodeURIComponent(mb.username)}`,
-            target: '_blank',
-            rel: 'noopener',
-            title: `Open ${mb.username} in webmail`
-          }, '🌐 Webmail ↗') : null,
-          webmailUrl ? ' ' : '',
-          ui.el('button', { class: 'btn btn-sm', onclick: () => mailboxModal(root, me, mb, sites) }, '🔑 Password'), ' ',
-          ui.el('button', {
-            class: 'btn btn-sm btn-danger', onclick: async () => {
-              if (!(await ui.confirmBox(`Delete mailbox ${mb.username}? Its emails will be removed permanently.`, { okText: 'Delete mailbox' }))) return;
-              try { await api.del(`/mail/mailboxes/${mb.id}`); ui.toast(`${mb.username} deleted`); load(root, me); }
-              catch (e) { ui.toast(e.message, true); }
-            }
-          }, '🗑')
-        )));
-      box.appendChild(ui.el('div', { class: 'table-wrap' },
-        ui.el('table', {},
-          ui.el('thead', {}, ui.el('tr', {},
-            ui.el('th', {}, 'Address'), ui.el('th', {}, 'Domain'),
-            ui.el('th', {}, 'Created'), ui.el('th', {}, 'Actions'))),
-          ui.el('tbody', {}, ...rows))));
+      /* Grouped by domain, with a readiness badge for each. */
+      const groups = new Map();
+      for (const mb of filtered) {
+        if (!groups.has(mb.domain)) groups.set(mb.domain, []);
+        groups.get(mb.domain).push(mb);
+      }
+
+      for (const [domain, list] of groups) {
+        const group = ui.el('div', { class: 'mb-group' });
+        const head = ui.el('div', { class: 'mb-group-head' },
+          ui.el('span', { class: 'mb-domain' }, domain),
+          ui.el('span', { class: 'text-dim', style: 'font-size:12px' },
+            `${list.length} mailbox${list.length === 1 ? '' : 'es'}`),
+          storage && storage[domain] !== undefined
+            ? ui.el('span', { class: 'text-dim', style: 'font-size:12px' }, `· ${bytes(storage[domain])} stored`)
+            : null,
+          ui.el('span', { class: 'spacer' }),
+          readinessBadge(domain));
+        group.appendChild(head);
+        group.appendChild(mailboxTable(root, me, list, webmailUrl));
+        box.appendChild(group);
+      }
     };
     rebuild();
     return box;
+  }
+
+  /** The per-domain readiness badge, fetched once and cached. */
+  const readinessCache = new Map();
+  function readinessBadge(domain) {
+    const badge = ui.el('span', { class: 'readiness' }, ui.el('span', { class: 'dot idle' }), 'checking…');
+    const cached = readinessCache.get(domain);
+    if (cached && Date.now() - cached.at < 60_000) { paint(cached.data); return badge; }
+    api.get(`/mail/readiness/${encodeURIComponent(domain)}`).then((d) => {
+      readinessCache.set(domain, { at: Date.now(), data: d });
+      paint(d);
+    }).catch(() => {
+      badge.textContent = '';
+      badge.appendChild(ui.el('span', { class: 'dot idle' }));
+      badge.appendChild(document.createTextNode('not checked'));
+    });
+    function paint(d) {
+      badge.textContent = '';
+      badge.appendChild(ui.el('span', { class: 'dot ' + (d.ready ? 'ok' : 'warn') }));
+      badge.appendChild(document.createTextNode(d.ready ? 'mail is set up' : `${d.checks.filter((c) => !c.ok).length} thing(s) to fix`));
+      badge.title = d.checks.map((c) => `${c.ok ? '✓' : '✗'} ${c.label}${c.detail ? ' — ' + c.detail : ''}`).join('\n');
+    }
+    return badge;
+  }
+
+  function mailboxTable(root, me, list, webmailUrl) {
+    const rows = list.map((mb) => ui.el('tr', {},
+      ui.el('td', { class: 'mono' }, mb.username),
+      ui.el('td', { class: 'text-dim' }, new Date(mb.created_at).toLocaleDateString()),
+      ui.el('td', {},
+        // Opens webmail already pointed at THIS mailbox: Roundcube
+        // prefills the login form from ?_user=, so the person only types
+        // their password instead of hunting for the right address.
+        webmailUrl ? ui.el('a', {
+          class: 'btn btn-sm',
+          href: `${webmailUrl}?_task=login&_user=${encodeURIComponent(mb.username)}`,
+          target: '_blank',
+          rel: 'noopener',
+          title: `Open ${mb.username} in webmail`
+        }, '🌐 Webmail ↗') : null,
+        webmailUrl ? ' ' : '',
+        ui.el('button', { class: 'btn btn-sm', onclick: () => mailboxModal(root, me, mb) }, '🔑 Password'), ' ',
+        copyButton(mb.username),
+        ' ',
+        ui.el('button', {
+          class: 'btn btn-sm btn-danger', onclick: async () => {
+            if (!(await ui.confirmBox(`Delete mailbox ${mb.username}? Its emails will be removed permanently.`, { okText: 'Delete mailbox' }))) return;
+            try { await api.del(`/mail/mailboxes/${mb.id}`); ui.toast(`${mb.username} deleted`); load(root, me); }
+            catch (e) { ui.toast(e.message, true); }
+          }
+        }, '🗑')
+      )));
+    return ui.el('div', { class: 'table-wrap' },
+      ui.el('table', {},
+        ui.el('thead', {}, ui.el('tr', {},
+          ui.el('th', {}, 'Address'), ui.el('th', {}, 'Created'), ui.el('th', {}, 'Actions'))),
+        ui.el('tbody', {}, ...rows)));
+  }
+
+  /** Copy an address to the clipboard. */
+  function copyButton(text) {
+    const b = ui.el('button', { class: 'btn btn-sm', title: `Copy ${text}` }, '📋');
+    b.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        ui.toast(`${text} copied`);
+      } catch {
+        // Clipboard access needs a secure context; a plain HTTP panel does
+        // not have one, so fall back to selecting the text.
+        const ta = ui.el('textarea', { style: 'position:fixed;left:-9999px' });
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); ui.toast(`${text} copied`); }
+        catch { ui.toast('Could not copy - select it manually', true); }
+        ta.remove();
+      }
+    };
+    return b;
   }
 
   /* -------------------------------------------------- mailbox modal -- */
@@ -227,8 +433,8 @@ window.MailView = (() => {
 
     if (!recordsView) {
       card.appendChild(ui.el('p', { class: 'text-dim' },
-        'Enter a domain to see the records required to send and receive mail here. ' +
-        'If the panel hosts its zone, they can be added in one click.'));
+        'Enter a domain to see the records required to send and receive mail here. '
+        + 'If the panel hosts its zone, they can be added in one click.'));
       return;
     }
 
@@ -287,6 +493,6 @@ window.MailView = (() => {
 
   return {
     render: (root, me) => { recordsView = null; return load(root, me); },
-    destroy: () => { recordsView = null; }
+    destroy: () => { recordsView = null; readinessCache.clear(); }
   };
 })();

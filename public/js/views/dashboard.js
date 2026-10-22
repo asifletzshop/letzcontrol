@@ -294,36 +294,14 @@ window.DashboardView = (() => {
   }
 
   /* ------------------------------------------------------------------ */
-  /* Quick actions                                                       */
+  /* Quick actions were removed at the operator's request.               */
   /* ------------------------------------------------------------------ */
-
-  const QA = [
-    { label: 'New Website', icon: '🌐', hash: '#/sites' },
-    { label: 'WordPress', icon: '🧭', hash: '#/wordpress' },
-    { label: 'Databases', icon: '🗄️', hash: '#/databases' },
-    { label: 'Files', icon: '📁', hash: '#/files' },
-    { label: 'Mail', icon: '📧', hash: '#/mail' },
-    { label: 'Services', icon: '⚙️', hash: '#/services', admin: true },
-    { label: 'PHP', icon: '🐘', hash: '#/php', admin: true },
-    { label: 'Terminal', icon: '💻', hash: '#/terminal', admin: true },
-    { label: 'Cron Jobs', icon: '⏰', hash: '#/cron', admin: true },
-    { label: 'Apps', icon: '🟩', hash: '#/nodeapps', admin: true },
-    { label: 'Setup Wizard', icon: '🧩', hash: '#/setup', admin: true },
-    { label: 'Users', icon: '👥', hash: '#/users', admin: true }
-  ];
-
-  function actionTiles(me) {
-    const wrap = ui.el('div', { class: 'tile-grid' });
-    for (const a of QA) {
-      if (a.admin && me.role !== 'admin') continue;
-      const b = ui.el('button', { class: 'tile', type: 'button' },
-        ui.el('span', { class: 'tile-ico' }, a.icon),
-        ui.el('span', { class: 'tile-label' }, a.label));
-      b.onclick = () => { location.hash = a.hash; };
-      wrap.appendChild(b);
-    }
-    return wrap;
-  }
+  /* They were a row of buttons that did nothing but change the page -
+   * every one of them opened a screen the sidebar already lists. The
+   * dashboard is a glance at the state of the server, and a strip of
+   * navigation dressed up as a feature was noise in the middle of it. The
+   * tiles, and the CSS that went with them, have been left in place rather
+   * than deleted, so putting them back is a one-line change. */
 
   /* ------------------------------------------------------------------ */
   /* Website cards                                                       */
@@ -477,7 +455,7 @@ window.DashboardView = (() => {
    * inherits the other's layout. Blocks the browser does not know about (an
    * older stored order, or a block added in a later release) are ignored
    * rather than rendered empty. */
-  const DEFAULT_ORDER = ['stats', 'actions', 'perf', 'sites', 'ops'];
+  const DEFAULT_ORDER = ['stats', 'perf', 'sites', 'ops'];
 
   function block(id, node) {
     const w = ui.el('div', { 'data-block': id, class: 'dash-block' });
@@ -677,16 +655,11 @@ window.DashboardView = (() => {
 
     const layout = ui.el('div', { id: 'dashLayout' });
 
-    const actionsCard = ui.el('div', { class: 'card' },
-      ui.el('h3', {}, 'Quick actions'),
-      actionTiles(me));
-
     const opsCard = ui.el('div', { class: 'ops-grid' },
       servicesCard(root),
       systemCard(s, lv));
 
     layout.append(block('stats', cards));
-    layout.append(block('actions', actionsCard));
     layout.append(block('perf', perfCard));
     layout.append(block('sites', sitesCard(root, me)));
     layout.append(block('ops', opsCard));
@@ -720,7 +693,7 @@ window.DashboardView = (() => {
 
     /* Give every block a grip, then restore this account's saved order. */
     const LABELS = {
-      stats: 'Server stats', actions: 'Quick actions', perf: 'Live performance',
+      stats: 'Server stats', perf: 'Live performance',
       sites: 'Your websites', ops: 'Services and system'
     };
     for (const w of layout.querySelectorAll(':scope > [data-block]')) {

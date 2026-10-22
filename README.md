@@ -109,7 +109,7 @@ existing install, and a surprise major version is not a kindness. Run the
 | 🌐 | **Websites** | Virtual hosts on Nginx, Apache **and** OpenLiteSpeed simultaneously · per-site PHP version · free Let's Encrypt SSL · WordPress/npm/proxy backends |
 | 🛰️ | **DNS** | Zones, A/AAAA/MX/TXT/CNAME records, DKIM hints, mail DNS presets |
 | 🧭 | **WordPress** | Install, versions, plugins/themes, one-click admin, database browser |
-| 📧 | **Mail** | Mailboxes with per-mailbox webmail links, self-service password change in Roundcube, DKIM, DNS records |
+| 📧 | **Mail** | Mailboxes grouped by domain, per-mailbox webmail links, self-service password change in Roundcube, per-domain mail readiness (MX · SPF · DKIM · DMARC), the outgoing queue, client settings and DNS records |
 | 🗄️ | **Databases** | Create/drop MySQL/MariaDB databases and users, phpMyAdmin, import & download |
 | 🐘 | **PHP** | All installed PHP-FPM versions, extensions, restart, default CLI switch |
 | ⚙️ | **Services** | Full systemd control, curates the ~170 units down to the 15 that matter |
