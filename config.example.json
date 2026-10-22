@@ -28,6 +28,10 @@
   },
 
   "certbotEmail": "",
+
+  "_tls_comment": "Serve https on the panel port too, alongside plain HTTP. Point these at any certificate; see README 'Panel https'.",
+  "tls": { "cert": "", "key": "" },
+
   "publicIp": "",
   "fileManagerRoots": ["/"]
 }

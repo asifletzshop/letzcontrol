@@ -22,7 +22,8 @@ curl -fsSL https://raw.githubusercontent.com/asifletzshop/letzcontrol/main/insta
 That is the whole install. It detects your OS, installs Node.js if needed, sets
 up a systemd service, opens the firewall port and prints your admin password.
 
-Then open **`http://your-server-ip:2087`** and log in.
+Then open **`http://your-server-ip:2087`** and log in — or the same address
+over **https** once a certificate is in place (see *Panel https*).
 
 <details>
 <summary>Installing a fork, a custom path or port</summary>
@@ -177,6 +178,7 @@ files.
 | Key | Default | Meaning |
 |---|---|---|
 | `port` / `host` | `2087` / `0.0.0.0` | Panel bind address — change it in Settings, not here |
+| `tls.cert` / `tls.key` | `""` | Serve https on the panel port too — see *Panel https* |
 | `sitesRoot` | `/var/www` | Docroots: `<sitesRoot>/<domain>/public` |
 | `ports.apache` / `ports.openlitespeed` | `8080` / `8088` | Backend ports so all servers coexist |
 | `mysql.*` | root @ `127.0.0.1` | Root DB credentials for the database manager |
@@ -218,6 +220,47 @@ independent recoveries, both automatic:
 
 The vhost from **Panel domain** is rewritten to follow the new port.
 
+### Panel https
+
+The panel can serve **https and plain HTTP from the same port**, so nothing
+that already points at `http://…:2087` has to change. Point two paths in
+`config.json` at a certificate and its key and the port starts answering https
+as well:
+
+```json
+"tls": { "cert": "/etc/letsencrypt/panel-ip/fullchain.pem",
+         "key":  "/etc/letsencrypt/panel-ip/privkey.pem" }
+```
+
+Each connection is sorted by its first byte, so a browser arriving over https
+gets a real, trusted connection while a script, a probe or a bookmarked
+`http://` address carries on exactly as before — a browser that typed `http://`
+is quietly redirected to `https://`, and only while the certificate is actually
+valid, because pointing everyone at a dead end helps nobody.
+
+Which certificate to use depends on how you reach the panel:
+
+| How you open it | Certificate |
+|---|---|
+| `https://1.2.3.4:2087` — by address | a short-lived Let's Encrypt certificate covering the **IP address itself**. Let's Encrypt only issues these for ~6 days, so acme.sh renews it daily |
+| `https://panel.example.com` — by name | any name certificate; **Settings → Panel domain** will issue one for you |
+
+An IP certificate, with [acme.sh](https://github.com/acmesh-official/acme.sh)
+(the panel never drives it — it owns its own files and renewals):
+
+```bash
+acme.sh --issue --cert-profile shortlived --days 3 -d 1.2.3.4 --webroot /var/www/html
+acme.sh --install-cert -d 1.2.3.4 --ecc \
+  --fullchain-file /etc/letsencrypt/panel-ip/fullchain.pem \
+  --key-file      /etc/letsencrypt/panel-ip/privkey.pem
+```
+
+The files are re-read once a minute, so a renewal takes effect on its own — no
+restart, no dropped session, and never a moment of serving a stale or
+half-written certificate. If the files go missing or stop matching, the panel
+keeps serving plain HTTP and says so in the log; the certificate is never
+allowed to take the panel down with it.
+
 ### Server time
 
 **Settings → Server time** sets the system timezone from the OS zone list, and
@@ -234,6 +277,9 @@ has switches for NTP and an immediate re-sync. Note that PHP keeps its own
   Anyone who logs in owns the machine.
 - Keep it behind a firewall, an SSH tunnel or a private network. Do not leave
   `:2087` open to the internet on a machine you care about.
+- If it must be reachable, serve it over **https** (*Panel https*). A password
+  typed into a login form on plain HTTP is readable by anything on the path,
+  and this one is the root password of the machine by another name.
 - The first admin password is written to `data/ADMIN_CREDENTIALS.txt` —
   **change it, then delete the file.**
 - All API routes require an authenticated session. Cookies are

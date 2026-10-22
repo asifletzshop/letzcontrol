@@ -28,6 +28,7 @@ const dns = require('./lib/dns');
 const wordpress = require('./lib/wordpress');
 const mail = require('./lib/mail');
 const webmail = require('./lib/webmail');
+const front = require('./lib/front');
 const { run } = require('./lib/exec');
 const terminal = require('./lib/terminal');
 const cron = require('./lib/cron');
@@ -61,6 +62,12 @@ webmail.syncPortVhost()
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
+
+/* The panel's own port serves both plain HTTP and https; lib/front works out
+ * which from the first byte of each connection. Replaced further down when the
+ * listener is built - until then, and forever on a server with no certificate,
+ * https simply is not on offer. */
+let frontDoor = { tlsAvailable: () => false };
 
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
@@ -108,6 +115,30 @@ app.use(compression({
   },
   threshold: 1024
 }));
+
+/* Send a browser that asked for http:// over to https:// - quietly, and only
+ * when it is worth doing.
+ *
+ * Only a browser navigating a page asks for text/html; every script, probe and
+ * API client asks for something else - curl asks for anything at all - and
+ * passes straight through untouched, so nothing that talks to the panel breaks.
+ * The redirect is refused while https is not actually serving a valid
+ * certificate, because pointing everyone at a dead end helps nobody - the
+ * panel stays reachable over plain HTTP however bad the TLS side gets. */
+app.use((req, res, next) => {
+  if (req.socket && req.socket.encrypted) return next();
+  if (!frontDoor.tlsAvailable()) return next();
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  if (!String(req.headers.accept || '').includes('text/html')) return next();
+  /* The host is taken from the request, so keep it to what a host may be
+   * made of before echoing it back into a Location. */
+  const host = String(req.headers.host || '');
+  if (!/^[A-Za-z0-9.\-[\]:]+$/.test(host)) return next();
+  /* 307, not 301: a permanent redirect is cached by browsers long past the
+   * day someone turns TLS off again, and then the http:// address they still
+   * have in a bookmark keeps bouncing to a port that no longer speaks it. */
+  res.redirect(307, `https://${host}${req.originalUrl}`);
+});
 
 app.get('/', (req, res) => {
   if (req.session && req.session.userId) {
@@ -194,12 +225,32 @@ terminal.attach(io);
 // requestTimeout would cut the response while apt is still working.
 server.requestTimeout = 900_000;
 
+/* One port, both protocols. lib/front takes each connection's first byte and
+ * hands it to whichever server can answer it; what is on disk decides whether
+ * that is https, and is re-read every minute so a renewed certificate takes
+ * effect on its own. */
+frontDoor = front.listen({
+  port: config.port,
+  host: config.host,
+  app,
+  httpServer: server,
+  certPath: config.tls && config.tls.cert,
+  keyPath: config.tls && config.tls.key,
+  log: (m) => console.error(`[letzControl] ${m}`),
+  onTlsServer: (s) => {
+    /* Socket.IO has to answer over TLS as well, or the dashboard would go
+     * dark the moment https is switched on. */
+    io.attach(s);
+    s.requestTimeout = 900_000;
+  }
+});
+
 /* A port that cannot be bound is the one failure that locks the operator out
  * of the only tool that could fix it, so undo it here rather than waiting for
  * the rollback watchdog. panelsettings records the working port in
  * data/last-good-port before writing a new one; if this boot cannot bind, put
  * that back and exit so systemd restarts us on a port that works. */
-server.on('error', (err) => {
+frontDoor.server.on('error', (err) => {
   if (err.code !== 'EADDRINUSE') {
     console.error('[letzControl] server error:', err.message);
     process.exit(1);
@@ -225,7 +276,7 @@ server.on('error', (err) => {
   process.exit(1);
 });
 
-server.listen(config.port, config.host, () => {
+frontDoor.server.on('listening', () => {
   /* A successful bind means the saved old port is obsolete. Leaving it behind
    * would let some unrelated EADDRINUSE weeks from now silently revert the
    * panel to a port nobody chose any more. */
@@ -235,3 +286,4 @@ server.listen(config.port, config.host, () => {
     console.warn('[letzControl] WARNING: not running as root - service/vhost/database management will fail.');
   }
 });
+

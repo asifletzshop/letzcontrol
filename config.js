@@ -53,6 +53,17 @@ const defaults = {
   // Email used for Let's Encrypt (empty = --register-unsafely-without-email)
   certbotEmail: '',
 
+  /* TLS for the panel's own port. Leave both paths empty and the panel serves
+   * plain HTTP exactly as it always has; point them at a certificate and its
+   * key and the same port starts answering https too - the two are told apart
+   * by the first byte the client sends, so nothing that already uses http://
+   * has to change. Any certificate works. A short-lived one issued by Let's
+   * Encrypt that covers the server's IP address is what lets
+   * https://1.2.3.4:2087 be reached without a browser warning; a name-based
+   * certificate works too if you prefer to reach the panel by hostname. The
+   * files are re-read every minute, so a renewal is picked up on its own. */
+  tls: { cert: '', key: '' },
+
   // Public IP used for default DNS A records and shown in the NS instructions.
   // Leave empty to auto-detect the first non-loopback IPv4 address.
   publicIp: '',
@@ -84,7 +95,8 @@ if (fs.existsSync(CONFIG_FILE)) {
       nginx: { ...defaults.nginx, ...(file.nginx || {}) },
       apache: { ...defaults.apache, ...(file.apache || {}) },
       openlitespeed: { ...defaults.openlitespeed, ...(file.openlitespeed || {}) },
-      mysql: { ...defaults.mysql, ...(file.mysql || {}) }
+      mysql: { ...defaults.mysql, ...(file.mysql || {}) },
+      tls: { ...defaults.tls, ...(file.tls || {}) }
     };
   } catch (e) {
     console.error('[letzControl] config.json is invalid JSON, using defaults:', e.message);

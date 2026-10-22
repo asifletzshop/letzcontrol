@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "test": "node --test",
     "dev": "node --watch server.js",
     "reset-password": "node reset-password.js",
     "bump-version": "node scripts/bump-version.js"
