@@ -817,3 +817,56 @@ input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 15
 }
 .wm-access .checkbox-label { margin-bottom: 6px; }
 .wm-access .btn { margin-top: 10px; }
+
+/* Key/value rows, for detail panels that are read rather than used - the
+ * Docker container inspector, and anything else that is a list of facts. */
+.kv-list { display: flex; flex-direction: column; }
+.kv-row {
+  display: flex; gap: 12px; align-items: baseline; padding: 7px 0;
+  border-bottom: 1px solid var(--border); font-size: 12.5px;
+}
+.kv-row:last-child { border-bottom: none; }
+.kv-k { color: var(--text-dim); min-width: 128px; flex-shrink: 0; }
+.kv-v { color: var(--text); word-break: break-word; flex: 1; min-width: 0; }
+
+/* The status strip across the top of Settings: who this is, how the panel is
+ * reached, and what it is running - read before anything is changed. */
+.strip {
+  display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 18px;
+}
+.chip {
+  display: inline-flex; align-items: baseline; gap: 7px; padding: 6px 11px;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: rgba(148,163,184,.05); font-size: 12px;
+}
+.chip-k { color: var(--text-dim); }
+.chip-v { color: var(--text); font-size: 12px; }
+.chip.good { border-color: rgba(52,211,153,.4); background: rgba(52,211,153,.08); }
+.chip.good .chip-v { color: var(--accent); }
+.chip.warn { border-color: rgba(251,191,36,.4); background: rgba(251,191,36,.08); }
+.chip.warn .chip-v { color: var(--warn); }
+
+/* Password strength, measured on length, character classes and repetition.
+ * The bar only ever fills as far as the password is worth, and the line under
+ * it says what is missing rather than only that it is weak. */
+.pw-meter {
+  height: 5px; border-radius: 3px; overflow: hidden; margin: -6px 0 4px;
+  background: rgba(148,163,184,.14);
+}
+.pw-meter i {
+  display: block; height: 100%; width: 0; border-radius: 3px;
+  background: var(--danger); transition: width .18s ease, background .18s ease;
+}
+.pw-meter i.ok { background: var(--warn); }
+.pw-meter i.good { background: var(--accent); }
+.pw-meter-text { font-size: 11.5px; margin-bottom: 12px; }
+
+/* Active sessions: one row per signed-in browser, with the current one
+ * marked so it is never ended by accident. */
+.sess-list { display: flex; flex-direction: column; }
+.sess-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 0;
+  border-bottom: 1px solid var(--border); font-size: 12.5px;
+}
+.sess-row:last-child { border-bottom: none; }
+.sess-row.current { background: rgba(52,211,153,.05); border-radius: 6px; padding-left: 8px; padding-right: 8px; }

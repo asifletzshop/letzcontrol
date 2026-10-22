@@ -27,11 +27,39 @@ window.SettingsView = (() => {
   };
 
   /* ------------------------------ account ------------------------------ */
+  /* How strong a password is, measured on the three things that actually cost
+   * an attacker time: its length, how many kinds of character it mixes, and
+   * whether it is one character repeated. It says what is missing, not merely
+   * that it is weak. */
+  function strength(pw) {
+    if (!pw) return { n: 0, why: 'Nothing typed yet.', tone: '' };
+    const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((r) => r.test(pw)).length;
+    let n = Math.min(45, pw.length * 3) + classes * 10;
+    if (new Set(pw).size < pw.length / 2) n -= 20;   // aaaaaaaa is one character
+    if (/^(.)\1+$/.test(pw)) n -= 20;
+    n = Math.max(0, Math.min(100, n));
+    const why = pw.length < 8 ? 'Needs at least 8 characters.'
+      : n < 40 ? 'Weak — longer, and a mix of kinds of character.'
+      : n < 70 ? 'Fair — a few more characters, or another kind.'
+      : 'Strong.';
+    return { n, why, tone: n >= 70 ? 'good' : n >= 40 ? 'ok' : 'weak' };
+  }
+
   function accountCard(me, state) {
     const cur = ui.el('input', { type: 'password', id: 'pw-current', autocomplete: 'current-password' });
     const next = ui.el('input', { type: 'password', id: 'pw-next', autocomplete: 'new-password' });
     const confirm = ui.el('input', { type: 'password', id: 'pw-confirm', autocomplete: 'new-password' });
     const msg = ui.el('p', { class: 'text-dim', style: 'font-size:12px' });
+
+    const bar = ui.el('i');
+    const meter = ui.el('div', { class: 'pw-meter' }, bar);
+    const meterText = ui.el('div', { class: 'pw-meter-text text-dim' }, 'Nothing typed yet.');
+    next.oninput = () => {
+      const s = strength(next.value);
+      bar.style.width = `${s.n}%`;
+      bar.className = s.tone;
+      meterText.textContent = s.why;
+    };
 
     const save = ui.el('button', { class: 'btn btn-primary' }, 'Change password');
     save.onclick = async () => {
@@ -53,6 +81,7 @@ window.SettingsView = (() => {
         `Signed in as `, ui.el('code', {}, me.username), ` · ${me.role}`),
       field('Current password', cur),
       field('New password (min 8 chars)', next),
+      meter, meterText,
       field('Repeat new password', confirm),
       ui.el('div', { class: 'modal-actions', style: 'justify-content:flex-start' }, save),
       msg
@@ -695,11 +724,16 @@ window.SettingsView = (() => {
   }
 
   /* ----------------------------- sessions ----------------------------- */
+  /* One row per browser, and each can be ended on its own. The listing is
+   * deliberately silent about anything that would help an attacker: a session
+   * is named by a hash of its id, never by the id, because the id is the
+   * credential that would sign that browser back in. */
   function sessionsCard(me) {
-    const list = ui.el('div', { style: 'font-size:12.5px;font-family:var(--mono)' });
+    const list = ui.el('div', { class: 'sess-list' });
+
     const kill = ui.el('button', { class: 'btn' }, 'Sign out other sessions');
     kill.onclick = async () => {
-      if (!(await ui.confirmBox('Sign out every other browser logged into your account?', { okText: 'Sign out others', danger: false }))) return;
+      if (!(await ui.confirmBox('Sign out every other browser signed into your account?', { okText: 'Sign out others', danger: false }))) return;
       try {
         const r = await api.post('/settings/sessions/kill-others');
         ui.toast(r.killed ? `Signed out ${r.killed} session(s)` : 'No other sessions');
@@ -713,9 +747,30 @@ window.SettingsView = (() => {
         list.innerHTML = '';
         if (!sessions.length) { list.appendChild(ui.el('div', { class: 'text-dim' }, 'No active sessions.')); return; }
         for (const s of sessions) {
-          list.appendChild(ui.el('div', { style: 'display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--border)' },
-            ui.el('span', { style: 'flex:1' }, s.sid + ' · ' + s.user),
-            ui.el('span', { class: s.current ? '' : 'text-dim' }, s.current ? 'this device' : new Date(s.createdAt || Date.now()).toLocaleString())));
+          const badge = s.current ? ui.badge('this device', 'green') : null;
+          const row = ui.el('div', { class: `sess-row${s.current ? ' current' : ''}` },
+            ui.el('span', { class: `dot ${s.current ? 'ok' : ''}` }),
+            ui.el('span', { style: 'flex:1;min-width:0' },
+              ui.el('div', {},
+                ui.el('strong', {}, s.user),
+                ' ', ui.badge(s.role, s.role === 'admin' ? 'blue' : 'gray'),
+                badge),
+              ui.el('div', { class: 'text-dim', style: 'font-size:11.5px' },
+                s.createdAt ? `signed in ${new Date(s.createdAt).toLocaleString()}` : 'signed in earlier')));
+          if (!s.current) {
+            row.appendChild(ui.el('button', {
+              class: 'btn btn-sm btn-danger', title: `Sign out ${s.user}`,
+              onclick: async () => {
+                if (!(await ui.confirmBox(`Sign out ${s.user}'s session from ${new Date(s.createdAt || Date.now()).toLocaleString()}?`, { okText: 'Sign out' }))) return;
+                try {
+                  await api.post('/settings/sessions/kill', { token: s.token });
+                  ui.toast('Session ended');
+                  load();
+                } catch (e) { ui.toast(e.message, true); }
+              }
+            }, 'Sign out'));
+          }
+          list.appendChild(row);
         }
       } catch (e) { list.textContent = e.message; }
     }
@@ -723,7 +778,8 @@ window.SettingsView = (() => {
 
     return ui.el('div', { class: 'card' },
       ui.el('h3', {}, 'Active sessions'),
-      ui.el('p', { class: 'text-dim', style: 'margin-top:-6px' }, 'Browsers currently signed in to the panel.'),
+      ui.el('p', { class: 'text-dim', style: 'margin-top:-6px' },
+        'Browsers currently signed in. An administrator can end any of them, which is how a stolen login is recovered without waiting for it to expire.'),
       ui.el('div', { style: 'margin-bottom:10px' }, kill),
       list
     );
@@ -765,6 +821,45 @@ window.SettingsView = (() => {
   }
 
   /* ------------------------------ render ------------------------------ */
+  /* Every group carries a heading and a line of prose. A page of unrelated
+   * boxes is harder to search than the same boxes under the few questions they
+   * actually answer: what is yours, what this panel is, and what may reach it. */
+  function section(title, blurb, ...cards) {
+    return ui.el('div', { style: 'margin-bottom:8px' },
+      ui.el('div', { class: 'section-head' }, ui.el('h3', {}, title)),
+      blurb ? ui.el('p', { class: 'text-dim', style: 'margin:-2px 0 12px;font-size:12.5px;max-width:78ch' }, blurb) : null,
+      ...cards.filter(Boolean));
+  }
+
+  /* Cards that answer the same question stand side by side, and fall back to
+   * one column when the window is too narrow for two. */
+  const pair = (...cards) => ui.el('div', { class: 'ops-grid' }, ...cards.filter(Boolean));
+
+  /* The few facts worth having in sight before anything is changed: who this
+   * is, whether the panel is reached over https, and what it is running. */
+  function chip(k, v, tone) {
+    return ui.el('span', { class: `chip${tone ? ` ${tone}` : ''}` },
+      ui.el('span', { class: 'chip-k' }, k),
+      ui.el('span', { class: 'chip-v mono' }, v));
+  }
+
+  function statusStrip(me) {
+    const here = location.protocol === 'https:';
+    const strip = ui.el('div', { class: 'strip' },
+      chip('Signed in as', `${me.username} · ${me.role}`),
+      chip('Connection', here ? 'https, encrypted' : 'plain http', here ? 'good' : 'warn'),
+      chip('Server time', new Date().toLocaleString()));
+    if (me.role === 'admin') {
+      api.get('/updates').then((u) => {
+        if (!strip.isConnected) return;
+        strip.appendChild(chip('Panel',
+          u.updateAvailable ? `${u.installed} → ${u.upstream} available` : `version ${u.installed}`,
+          u.updateAvailable ? 'warn' : ''));
+      }).catch(() => { /* GitHub being unreachable is not worth a banner */ });
+    }
+    return strip;
+  }
+
   async function render(root, me) {
     let data;
     try {
@@ -780,23 +875,29 @@ window.SettingsView = (() => {
     root.innerHTML = '';
     root.appendChild(ui.el('div', { class: 'toolbar' },
       ui.el('button', { class: 'btn', onclick: () => render(root, me) }, '↻ Refresh')));
-    root.appendChild(ui.el('p', { class: 'text-dim', style: 'margin-top:0' },
-      'Panel settings, backups and account controls. '
-      + (isAdmin ? 'You are an administrator — all sections are available.' : 'Administrator-only sections are hidden.')));
+    root.appendChild(statusStrip(me));
 
-    root.appendChild(accountCard(me, state));
-    root.appendChild(prefsCard(data));
-    root.appendChild(themeCard(state, (data.prefs && data.prefs.theme) || 'dark'));
+    root.appendChild(section('Your account',
+      'How you sign in, how the panel looks for you, and the browsers signed in to this account.',
+      pair(accountCard(me, state), themeCard(state, (data.prefs && data.prefs.theme) || 'dark')),
+      pair(prefsCard(data), sessionsCard(me))));
+
     if (isAdmin) {
-      root.appendChild(domainCard(state));
-      root.appendChild(portCard(state));
-      root.appendChild(timeCard(state));
-      root.appendChild(adminToolsCard(state));
-      root.appendChild(configCard(data, isAdmin));
+      root.appendChild(section('This panel',
+        'Where the panel answers, and what it is running. Secrets are never shown or editable here.',
+        pair(domainCard(state), portCard(state)),
+        timeCard(state),
+        configCard(data, isAdmin)));
+
+      root.appendChild(section('Admin tools',
+        'phpMyAdmin and the webmail sit on their own ports, open to the whole internet and so restricted by address.',
+        adminToolsCard(state)));
     }
-    root.appendChild(maintenanceCard(state, isAdmin));
-    root.appendChild(sessionsCard(me));
-    if (isAdmin) root.appendChild(systemCard());
+
+    root.appendChild(section('Maintenance',
+      'A backup holds your sites, mailboxes, databases and users. Restoring replaces all of them.',
+      isAdmin ? pair(maintenanceCard(state, isAdmin), systemCard())
+        : maintenanceCard(state, isAdmin)));
 
     root.appendChild(ui.el('div', { class: 'card' },
       ui.el('h3', {}, 'About'),
