@@ -88,6 +88,9 @@ window.SitesView = (() => {
           }
         }, '📂 Files'), ' ',
         ui.el('button', {
+          class: 'btn btn-sm', onclick: () => docrootModal(root, me, s)
+        }, '🗂 Folder'), ' ',
+        ui.el('button', {
           class: 'btn btn-sm', onclick: async () => {
             let created = false;
             try {
@@ -187,6 +190,12 @@ window.SitesView = (() => {
     const wwwChk = ui.el('input', { type: 'checkbox', id: 'site-www', checked: '' });
     body.appendChild(ui.el('label', { class: 'checkbox-label' }, wwwChk, 'Also create www.<domain> alias'));
 
+    const docrootIn = ui.el('input', { type: 'text', id: 'site-docroot', placeholder: 'leave blank for the default folder' });
+    body.appendChild(ui.el('label', {}, 'Document root folder (optional)', docrootIn));
+    body.appendChild(ui.el('p', { class: 'text-dim', style: 'margin-top:-8px' },
+      'Where the site lives on disk. The web server publishes its public/ subfolder. ' +
+      'Leave blank to use the default folder named after the domain.'));
+
     if (me.role === 'admin' && users && users.length) {
       const ownerSel = ui.el('select', { id: 'site-owner' });
       for (const u of users) ownerSel.appendChild(ui.el('option', { value: u.id }, `${u.username} (${u.role})`));
@@ -210,6 +219,7 @@ window.SitesView = (() => {
           backend: backendSel.value,
           phpVersion: phpSel.value || null,
           www: wwwChk.checked,
+          docroot: docrootIn.value.trim() || undefined,
           ownerId: document.getElementById('site-owner') ? document.getElementById('site-owner').value : undefined
         });
         m.close();
@@ -304,6 +314,80 @@ window.SitesView = (() => {
         });
         m.close();
         ui.toast('Settings saved');
+        const failed = (r.results || []).filter((x) => !x.ok);
+        if (failed.length) {
+          ui.modal({ title: 'Reload results', body: ui.el('pre', { class: 'pre-log' },
+            r.results.map((x) => `[${x.server}] ${x.ok ? 'OK' : 'FAILED'}\n${x.output}`).join('\n\n')) });
+        }
+        load(root, me);
+      } catch (e) {
+        ui.toast(e.message, true);
+        save.disabled = false;
+      }
+    };
+  }
+
+  /* Change the folder a site is served from.
+   *
+   * The preview spells out what will happen, because "move the files" and
+   * "point at the folder" are very different operations and the difference
+   * is not obvious from a checkbox. */
+  function docrootModal(root, me, s) {
+    const body = ui.el('div', {});
+
+    const input = ui.el('input', { type: 'text', value: s.docroot, placeholder: '/var/www/example.com' });
+    body.appendChild(ui.el('label', {}, 'Document root folder', input));
+
+    const moveChk = ui.el('input', { type: 'checkbox' });
+    moveChk.checked = true;
+    body.appendChild(ui.el('label', { class: 'checkbox-label' }, moveChk,
+      "Move the site's files into the new folder"));
+
+    const preview = ui.el('pre', { class: 'pre-log', style: 'margin-top:8px;white-space:pre-wrap' });
+    body.appendChild(preview);
+
+    const render = () => {
+      const target = input.value.trim().replace(/\/+$/, '');
+      const lines = [];
+      if (!target) {
+        lines.push('Enter a folder path.');
+      } else {
+        lines.push(`served from   ${target}/public`);
+        lines.push(moveChk.checked
+          ? `files         moved from ${s.docroot} to ${target}`
+          : `files         stay in ${s.docroot} - the site is pointed at the new folder instead`);
+        if (s.backend === 'node') {
+          lines.push(moveChk.checked
+            ? 'application   moves with the folder; its systemd unit is updated and restarted'
+            : 'application   stays where it is; only the folder nginx serves changes');
+        }
+        if (!moveChk.checked) {
+          lines.push('note          the panel creates the public/ and logs/ subfolders if missing');
+        }
+      }
+      preview.textContent = lines.join('\n');
+    };
+    input.addEventListener('input', render);
+    moveChk.addEventListener('change', render);
+    render();
+
+    const actions = ui.el('div', { class: 'modal-actions' });
+    const cancel = ui.el('button', { class: 'btn' }, 'Cancel');
+    const save = ui.el('button', { class: 'btn btn-primary' }, 'Change folder');
+    actions.append(cancel, save);
+    body.appendChild(actions);
+
+    const m = ui.modal({ title: `Folder — ${s.domain}`, body });
+    cancel.onclick = m.close;
+    save.onclick = async () => {
+      save.disabled = true;
+      try {
+        const r = await api.put(`/sites/${s.id}/docroot`, {
+          docroot: input.value.trim(),
+          moveFiles: moveChk.checked
+        });
+        m.close();
+        ui.toast(`${s.domain} now lives in ${r.site.docroot}`);
         const failed = (r.results || []).filter((x) => !x.ok);
         if (failed.length) {
           ui.modal({ title: 'Reload results', body: ui.el('pre', { class: 'pre-log' },
