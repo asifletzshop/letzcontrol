@@ -123,12 +123,164 @@ window.MailView = (() => {
     /* ---------- the queue ---------- */
     if (queueCount) root.appendChild(queueCard(root, me, status.queue));
 
+    /* ---------- the webmail over https ---------- */
+    root.appendChild(webmailSection(root, me));
+
     /* ---------- mailboxes (with a per-website selector) ---- */
     root.appendChild(mailboxSection(root, me, mailboxes, storage, sites,
       status.webmail.installed ? status.webmail.url : null));
 
     /* ---------- DNS records ---------- */
     dnsCard(root, me, sites, status);
+  }
+
+  /* -------------------------------------------------- the webmail ----- */
+  /* Two ways in, and they need different things.
+   *
+   *   https://<domain>/webmail/      needs the site to have a certificate -
+   *                                   which it usually already does, because
+   *                                   that is what the panel issues it for.
+   *   https://mail.<domain>/         needs an A record for mail.<domain> and
+   *                                   a certificate of its own.
+   *
+   * A bare HTTP login form is the thing this avoids, so neither is offered
+   * without its certificate. */
+  function webmailSection(root, me) {
+    const card = ui.el('div', { class: 'card', style: 'margin-bottom:16px' },
+      ui.el('h3', {}, 'Webmail over https'),
+      ui.el('div', { class: 'text-dim' }, 'Checking…'));
+
+    api.get('/mail/webmail').then((d) => {
+      if (!root.isConnected) return;
+      card.innerHTML = '';
+      card.appendChild(ui.el('h3', {}, 'Webmail over https'));
+      card.appendChild(ui.el('p', { class: 'text-dim', style: 'margin-top:0' },
+        'The webmail is a login form, so it should never be reached over plain HTTP. '
+        + 'It can be mounted under a website that already has a certificate, or given '
+        + 'its own name at mail.<domain> with a certificate of its own.'));
+
+      if (!d.domains || !d.domains.length) {
+        card.appendChild(ui.el('div', { class: 'text-dim' },
+          'No mail domains yet. Create a mailbox and the domain it belongs to will appear here.'));
+        return;
+      }
+      for (const s of d.domains) card.appendChild(webmailRow(root, me, s));
+
+      /* A hosting customer's webmail is a service for the customer: they
+       * read their mail from home, from a phone. Restricting it to the
+       * addresses that administer the box makes it useless to them - but a
+       * login form on the internet is a target, so the choice is the
+       * operator's to make. */
+      const access = ui.el('div', { class: 'wm-access' });
+      const isOpen = !!d.public;
+      const accessChk = ui.el('input', { type: 'checkbox' });
+      accessChk.checked = isOpen;
+      access.appendChild(ui.el('label', { class: 'checkbox-label' }, accessChk,
+        'Let everyone with a mailbox use the webmail, not only the administering addresses'));
+      access.appendChild(ui.el('div', { class: 'text-dim', style: 'font-size:12px' },
+        'A login form on the internet is a target for password guessing. The webmail is '
+        + 'separate from phpMyAdmin, so opening it does not open that.'));
+      const apply = ui.el('button', { class: 'btn btn-sm' }, 'Apply');
+      apply.onclick = async () => {
+        apply.disabled = true;
+        try {
+          const r = await api.post('/mail/webmail/access', { open: accessChk.checked });
+          ui.toast(r.message || 'Done');
+          load(root, me);
+        } catch (e) { ui.toast(e.message, true); apply.disabled = false; }
+      };
+      access.appendChild(apply);
+      card.appendChild(access);
+    }).catch((e) => {
+      card.innerHTML = '';
+      card.appendChild(ui.el('h3', {}, 'Webmail over https'));
+      card.appendChild(ui.el('div', { class: 'text-dim' }, e.message));
+    });
+    return card;
+  }
+
+  function webmailRow(root, me, s) {
+    const row = ui.el('div', { class: 'wm-row' });
+
+    /* --- mounted under the site's own domain --- */
+    const pathBox = ui.el('div', { class: 'wm-cell' });
+    pathBox.appendChild(ui.el('div', { class: 'wm-title' }, `https://${s.domain}/webmail/`));
+    if (s.siteWebmail && s.siteSsl) {
+      pathBox.appendChild(ui.el('div', { class: 'wm-state ok' },
+        ui.el('span', { class: 'dot ok' }), 'mounted, and it has a certificate'));
+    } else if (!s.siteExists) {
+      pathBox.appendChild(ui.el('div', { class: 'wm-state' },
+        ui.el('span', { class: 'dot idle' }), 'no website with that domain to mount it on'));
+    } else if (!s.siteSsl) {
+      pathBox.appendChild(ui.el('div', { class: 'wm-state' },
+        ui.el('span', { class: 'dot warn' }), 'the website has no certificate yet'));
+    } else {
+      pathBox.appendChild(ui.el('div', { class: 'wm-state' },
+        ui.el('span', { class: 'dot idle' }), 'not mounted'));
+    }
+    const mountBtn = ui.el('button', { class: 'btn btn-sm' },
+      s.siteWebmail ? 'Unmount' : 'Mount here');
+    mountBtn.disabled = !s.siteExists || !s.siteSsl;
+    mountBtn.onclick = async () => {
+      mountBtn.disabled = true;
+      try {
+        const r = await api.post('/mail/webmail/mount', { domain: s.domain, off: !!s.siteWebmail });
+        ui.toast(r.message || 'Done');
+        load(root, me);
+      } catch (e) { ui.toast(e.message, true); mountBtn.disabled = false; }
+    };
+    pathBox.appendChild(mountBtn);
+    if (s.siteWebmail && s.pathUrl) {
+      pathBox.appendChild(ui.el('a', {
+        class: 'btn btn-sm', href: s.pathUrl, target: '_blank', rel: 'noopener'
+      }, '🌐 Open ↗'));
+    }
+    row.appendChild(pathBox);
+
+    /* --- its own hostname --- */
+    const hostBox = ui.el('div', { class: 'wm-cell' });
+    hostBox.appendChild(ui.el('div', { class: 'wm-title' }, `https://${s.hostname}/`));
+    if (s.ready) {
+      hostBox.appendChild(ui.el('div', { class: 'wm-state ok' },
+        ui.el('span', { class: 'dot ok' }), 'pointing here, with a certificate'));
+    } else {
+      const bits = [];
+      if (!s.dns.ok) bits.push('the name does not point here');
+      if (!s.cert) bits.push('no certificate');
+      if (!s.vhost) bits.push('no vhost');
+      hostBox.appendChild(ui.el('div', { class: 'wm-state' },
+        ui.el('span', { class: 'dot warn' }), bits.join(' · ') || 'not set up'));
+    }
+    const hostBtn = ui.el('button', { class: 'btn btn-sm' }, 'Set up');
+    hostBtn.onclick = async () => {
+      hostBtn.disabled = true;
+      ui.toast('Setting up…');
+      try {
+        const r = await api.post('/mail/webmail/hostname', { domain: s.domain });
+        ui.toast(r.message || 'Done');
+        if (r.problems && r.problems.length) {
+          ui.modal({
+            title: 'What still needs doing',
+            body: ui.el('div', {},
+              ...(r.steps || []).map((x) => ui.el('div', { class: 'wm-state ok' }, `✓ ${x}`)),
+              ...(r.problems || []).map((x) => ui.el('div', { class: 'wm-state' }, `• ${x}`)))
+          });
+        }
+        load(root, me);
+      } catch (e) {
+        ui.toast(e.message, true);
+        hostBtn.disabled = false;
+      }
+    };
+    hostBox.appendChild(hostBtn);
+    if (s.hostUrl) {
+      hostBox.appendChild(ui.el('a', {
+        class: 'btn btn-sm', href: s.hostUrl, target: '_blank', rel: 'noopener'
+      }, '🌐 Open ↗'));
+    }
+    row.appendChild(hostBox);
+
+    return row;
   }
 
   function clientRow(protocol, host, port, note) {

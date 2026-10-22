@@ -32,7 +32,12 @@ const defaults = {
   ports: {
     apache: 8080,
     openlitespeed: 8088,
-    node: 3001
+    node: 3001,
+    // The webmail (Roundcube). It has its own vhost on its own port, which
+    // is how it stays off the websites' own domains - but it is also
+    // reachable under a site's own domain at /webmail, and that goes
+    // through here.
+    webmail: 2088
   },
 
   // Config locations (Debian/Ubuntu layout)

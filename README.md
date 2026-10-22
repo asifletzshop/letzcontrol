@@ -109,7 +109,7 @@ existing install, and a surprise major version is not a kindness. Run the
 | 🌐 | **Websites** | Virtual hosts on Nginx, Apache **and** OpenLiteSpeed simultaneously · per-site PHP version · free Let's Encrypt SSL · WordPress/npm/proxy backends |
 | 🛰️ | **DNS** | Zones, A/AAAA/MX/TXT/CNAME records, DKIM hints, mail DNS presets |
 | 🧭 | **WordPress** | Install, versions, plugins/themes, one-click admin, database browser |
-| 📧 | **Mail** | Mailboxes grouped by domain, per-mailbox webmail links, self-service password change in Roundcube, per-domain mail readiness (MX · SPF · DKIM · DMARC), the outgoing queue, client settings and DNS records |
+| 📧 | **Mail** | Mailboxes grouped by domain, per-mailbox webmail links, self-service password change in Roundcube, per-domain mail readiness (MX · SPF · DKIM · DMARC), the outgoing queue, client settings and DNS records, and the webmail over https (`https://<domain>/webmail/` · `https://mail.<domain>/`) |
 | 🗄️ | **Databases** | Create/drop MySQL/MariaDB databases and users, phpMyAdmin, import & download |
 | 🐘 | **PHP** | All installed PHP-FPM versions, extensions, restart, default CLI switch |
 | ⚙️ | **Services** | Full systemd control, curates the ~170 units down to the 15 that matter |
@@ -248,6 +248,23 @@ has switches for NTP and an immediate re-sync. Note that PHP keeps its own
   the panel sees you arriving from and offers to add it — an operator's own
   address is often a dynamic one, and the only symptom of a stale list is a
   403 from a tool you are allowed to use.
+- **The webmail is a service for the customer, not an administering tool**, so
+  *Mail → Webmail over https* can open it to everyone with a mailbox while
+  phpMyAdmin stays restricted — one choice, one vhost set, no way to open the
+  database browser by accident. Two addresses are offered, and both are over
+  TLS, because a login form on plain HTTP is the thing to avoid:
+
+  | | needs | where to click |
+  |---|---|---|
+  | `https://<domain>/webmail/` | the site already has a certificate | *Mount here* |
+  | `https://mail.<domain>/` | an A record for `mail.<domain>` pointing here, then a certificate | *Set up* |
+
+  *Set up* adds the A record itself when the panel hosts the domain's zone,
+  writes the vhost, issues the certificate and wires up renewal; when it
+  cannot (the name points somewhere else and the zone is elsewhere) it says
+  which record to add rather than leaving half a setup behind. A vhost that
+  names a certificate which is not on disk stops nginx from starting at all,
+  so anything that does not get as far as a certificate is removed again.
 - Put the panel behind Nginx with TLS and set `"host": "127.0.0.1"` so it is not
   reachable directly.
 

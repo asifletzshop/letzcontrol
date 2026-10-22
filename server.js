@@ -27,6 +27,8 @@ const setup = require('./lib/setup');
 const dns = require('./lib/dns');
 const wordpress = require('./lib/wordpress');
 const mail = require('./lib/mail');
+const webmail = require('./lib/webmail');
+const { run } = require('./lib/exec');
 const terminal = require('./lib/terminal');
 const cron = require('./lib/cron');
 const servers = require('./lib/servers');
@@ -41,6 +43,20 @@ users.ensureAdmin();
 /* Record the real port each existing Node app listens on, before anything can
  * regenerate a vhost from config and repoint one app at another. */
 sites.migrateAppPorts().catch((e) => console.error('[letzControl] app port migration:', e.message));
+
+/* Who may use the webmail is carried in config.json but enforced by a line
+ * in the webmail's own nginx vhost, which the installer wrote by hand. Bring
+ * the two back into step on every start, so a change made while the panel
+ * was down is not simply lost - but only reload nginx when it actually
+ * differs, because a reload on every start for nothing is noise. */
+webmail.syncPortVhost()
+  .then(async (r) => {
+    if (!r.changed) return;
+    const check = await run('nginx -t');
+    if (check.ok) await run('systemctl reload nginx');
+    else console.error('[letzControl] webmail access was updated but nginx refused it:', check.stderr);
+  })
+  .catch((e) => console.error('[letzControl] webmail access sync:', e.message));
 
 const app = express();
 const server = http.createServer(app);
