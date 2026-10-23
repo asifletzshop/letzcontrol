@@ -455,6 +455,12 @@ window.DockerView = (() => {
 
     if (c.site) {
       const s = c.site;
+      /* A certificate does not by itself make an https address usable: the
+       * app behind the proxy decides its own URLs from the request it saw, and
+       * one that is not told the real scheme writes http:// links that the
+       * browser then refuses on an https page. So this is explained here rather
+       * than left to be discovered as a site that renders as raw text. */
+      const httpsBlocked = s.ssl && !s.forceHttps;
       ui.modal({
         title: `Website for ${c.name}`,
         body: ui.el('div', {},
@@ -465,6 +471,14 @@ window.DockerView = (() => {
             s.ssl ? ui.badge('SSL', 'green') : ui.badge('no SSL yet', 'gray')),
           ui.el('p', { class: 'text-dim' },
             `${s.domain} forwards to port ${s.port} of ${c.name}.`),
+          httpsBlocked
+            ? ui.el('p', { class: 'text-dim' },
+              `${c.name} is reached over plain http, so it does not know a `
+              + 'visitor used https and keeps writing its own links as http://. '
+              + 'A browser refuses those on an https page, which leaves the site '
+              + 'looking unstyled - so this address stays on http. If the app '
+              + 'understands forwarded headers, switch https on below.')
+            : null,
           ui.el('div', { class: 'modal-actions' },
             s.ssl ? null : ui.el('button', {
               class: 'btn btn-primary',
@@ -477,6 +491,21 @@ window.DockerView = (() => {
                 try { await issueCert(s); } finally { btn.disabled = false; }
               }
             }, '🔒 Get certificate'),
+            s.ssl
+              ? ui.el('button', {
+                onclick: async () => {
+                  try {
+                    const r = await api.post(`/docker/containers/${c.id}/link`, {
+                      domain: s.domain, port: s.port, forceHttps: !s.forceHttps
+                    });
+                    ui.toast(r.site && r.site.forceHttps
+                      ? 'https on - the app is told to use it'
+                      : 'https off - the app keeps its own http links');
+                    load();
+                  } catch (e) { ui.toast(e.message, true); }
+                }
+              }, s.forceHttps ? '🔒 Turn https off' : '🔒 Turn https on')
+              : null,
             ui.el('button', {
               class: 'btn btn-danger',
               onclick: async () => {
