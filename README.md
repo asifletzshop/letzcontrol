@@ -91,6 +91,14 @@ the backup fails, the update says that too and carries on without one — a
 warning is better than a silent skip, because a silent skip leaves you
 believing you have a copy.
 
+`data/backups/` is excluded from its own archive. It was not at first, so
+each backup contained every backup before it and the footprint doubled on
+each update — 3.7M, 7.4M, 29M, 88M, 142M, 283M, 1.0G, 1.9G, 6.8G, 14G —
+until a 58G disk filled and the panel could no longer write its own
+`db.json`. The newest five archives are kept and older ones are removed
+once the new one exists, so a failed tar can never cost the last good
+copy. The payload is under 5K compressed; everything else was self-nesting.
+
 **The version moves on every push.** This project ships by pushing to a
 branch rather than by cutting releases, so a workflow bumps `package.json`,
 commits it, tags it and publishes a release for it. That is what lets an
