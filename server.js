@@ -148,9 +148,32 @@ app.use((req, res, next) => {
   res.redirect(307, `https://${host}${req.originalUrl}`);
 });
 
+/* The shell page names every view script, so it is the one file that must
+ * never come from an old copy.
+ *
+ * express.static caches hard (7 days) and these URLs carry no version of their
+ * own, so after an update an already-open browser went on running the code it
+ * had already fetched: the fix was on disk, the old code was still executing,
+ * and a bug that had been repaired kept appearing. Stamping the running
+ * version into each local script and stylesheet changes every one of those
+ * URLs at once, so the browser has to ask for them again - and no-cache here is
+ * what makes it re-read the shell and pick the stamp up in the first place.
+ * no-cache rather than no-store: the page is small and stays in the cache, it
+ * just has to be revalidated by ETag, which costs a 304.
+ *
+ * Only paths beginning /js/ or /css/ are stamped; the CDN and data: URLs are
+ * left alone, they are already versioned by their own path. */
+const assetVersion = require('./package.json').version;
+function indexHtml() {
+  return fs.readFileSync(path.join(__dirname, 'views', 'index.html'), 'utf8')
+    .replace(/(src|href)="(\/(?:js|css)\/[^"?]+)(?:\?[^"]*)?"/g,
+      `$1="$2?v=${assetVersion}"`);
+}
+
 app.get('/', (req, res) => {
   if (req.session && req.session.userId) {
-    return res.sendFile(path.join(__dirname, 'views', 'index.html'));
+    res.set('Cache-Control', 'no-cache');
+    return res.type('html').send(indexHtml());
   }
   res.redirect('/login.html');
 });
@@ -180,11 +203,20 @@ app.get('/robots.txt', (req, res) => {
 });
 
 /* Static assets are replaced when the panel is updated, not per request, so
- * they can be cached hard. index:false keeps directory listing off. */
+ * they can be cached hard. index:false keeps directory listing off.
+ *
+ * HTML is the exception, and it has to be: a page is what names the other
+ * files, so a cached page keeps asking for the old names. Anything ending in
+ * .html is revalidated every time while the scripts and styles it points at
+ * stay cached for the week - the version stamp in index.html only reaches the
+ * browser if the shell itself is re-read. */
 app.use(express.static(path.join(__dirname, 'public'), {
   index: false,
   maxAge: '7d',
-  etag: true
+  etag: true,
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+  }
 }));
 
 /* ---------------------------- API -------------------------------- */
