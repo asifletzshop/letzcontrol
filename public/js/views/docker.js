@@ -767,7 +767,19 @@ window.DockerView = (() => {
     });
 
     start.onclick = async () => {
-      const done = busy(start, 'Starting…');
+      /* An image that is not here yet has to be downloaded first, and that is
+       * minutes rather than milliseconds - so say which of the two is
+       * happening. A button that only reads "Starting…" throughout a whole
+       * image download looks stuck, which invites clicking it again. docker
+       * writes an implicit :latest out in full, so a bare name is written out
+       * the same way before the two are compared. */
+      const typed = image.value.trim();
+      const hasTag = typed.includes(':') || typed.includes('@');
+      const local = await api.get('/docker/images')
+        .then((d) => (d.images || []).some(
+          (i) => (i.tags || []).includes(hasTag ? typed : `${typed}:latest`)))
+        .catch(() => true);
+      const done = busy(start, local ? 'Starting…' : 'Pulling image…');
       try {
         const r = await api.post('/docker/containers', {
           image: image.value.trim(), name: name.value.trim(), command: command.value,
