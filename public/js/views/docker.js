@@ -338,27 +338,31 @@ window.DockerView = (() => {
       }
     }, label);
 
+    /* Every entry does the same two things before acting: the click stays
+     * inside the menu, and the menu goes back down. The class is only set when
+     * there is one - ui.el assigns whatever it is handed, so a class key left
+     * at undefined would end up as a class literally named "undefined". */
+    const item = (label, fn, cls) => {
+      const attrs = {
+        onclick: (e) => { if (e.stopPropagation) e.stopPropagation(); closeMenus(); fn(); }
+      };
+      if (cls) attrs.class = cls;
+      return ui.el('button', attrs, label);
+    };
+
     const openUrl = publishedUrl(c);
+    const raw = portUrl(c);
+    /* A second open entry is only worth showing once there is a linked website
+     * for it to differ from - otherwise the two say the same thing. */
+    const showRaw = Boolean(c.site && raw && raw !== openUrl);
 
     return ui.el('div', { class: 'casa-menu' },
-      ui.el('button', {
-        onclick: (e) => { if (e.stopPropagation) e.stopPropagation(); closeMenus(); appDialog(c); }
-      }, '⚙️ Settings'),
-      openUrl
-        ? ui.el('button', {
-          onclick: (e) => {
-            if (e.stopPropagation) e.stopPropagation();
-            closeMenus();
-            window.open(openUrl, '_blank', 'noopener');
-          }
-        }, '↗ Open')
-        : null,
-      ui.el('button', {
-        onclick: (e) => { if (e.stopPropagation) e.stopPropagation(); closeMenus(); logsModal(c); }
-      }, '📋 Logs'),
-      ui.el('button', {
-        onclick: (e) => { if (e.stopPropagation) e.stopPropagation(); closeMenus(); appDialog(c, 'terminal'); }
-      }, '💻 Terminal'),
+      item('⚙️ Settings', () => appDialog(c)),
+      openUrl ? item('↗ Open', () => window.open(openUrl, '_blank', 'noopener')) : null,
+      item(c.site ? '🌐 Website' : '🌐 Link website', () => linkModal(c)),
+      showRaw ? item('↗ Open port', () => window.open(raw, '_blank', 'noopener')) : null,
+      item('📋 Logs', () => logsModal(c)),
+      item('💻 Terminal', () => appDialog(c, 'terminal')),
       ui.el('div', { class: 'msep' }),
       ...(c.state === 'running'
         ? [act('pause', '⏸ Pause'), act('restart', '↻ Restart'), act('stop', '⏹ Stop')]
@@ -366,16 +370,11 @@ window.DockerView = (() => {
           ? [act('unpause', '▶ Unpause'), act('stop', '⏹ Stop')]
           : [act('start', '▶ Start')]),
       ui.el('div', { class: 'msep' }),
-      ui.el('button', {
-        class: 'danger',
-        onclick: async (e) => {
-          if (e.stopPropagation) e.stopPropagation();
-          closeMenus();
-          if (!(await ui.confirmBox(`Uninstall ${c.name}? It is stopped and deleted.`, { okText: 'Uninstall' }))) return;
-          try { await api.del(`/docker/containers/${c.id}`); ui.toast(`${c.name} uninstalled`); load(); }
-          catch (err) { ui.toast(err.message, true); }
-        }
-      }, '🗑 Uninstall')
+      item('🗑 Uninstall', async () => {
+        if (!(await ui.confirmBox(`Uninstall ${c.name}? It is stopped and deleted.`, { okText: 'Uninstall' }))) return;
+        try { await api.del(`/docker/containers/${c.id}`); ui.toast(`${c.name} uninstalled`); load(); }
+        catch (err) { ui.toast(err.message, true); }
+      }, 'danger')
     );
   }
 
@@ -391,14 +390,164 @@ window.DockerView = (() => {
     return TLS_ONLY.some((t) => t.port === port && t.image.test(image)) ? 'https' : 'http';
   }
 
-  /* Where the container can be reached from a browser, when it publishes a
-   * port. CasaOS's "Open" does exactly this - it is the point of an app tile. */
-  function publishedUrl(c) {
+  /* The raw address: this container's own published port on this server. That
+   * is what an app looks like before it has a name of its own. */
+  function portUrl(c) {
     const first = String(c.ports || '').split(',')[0].trim();
     const m = first.match(/^(\d+)->/);
     if (!m) return null;
     const port = Number(m[1]);
     return `${schemeFor(c.image || '', port)}://${location.hostname || 'localhost'}:${port}`;
+  }
+
+  /* Where the container is opened from, when it publishes a port.
+   *
+   *  A linked website wins when there is one. That is the address meant for
+   *  other people - a name on the normal ports, with a certificate - and it
+   *  does not depend on which port happened to be published or on which
+   *  scheme this particular image happens to speak. CasaOS's "Open" does the
+   *  same job; the raw port stays in the menu for when the app matters more
+   *  than the name. */
+  function publishedUrl(c) {
+    return (c.site && c.site.url) || portUrl(c);
+  }
+
+  /* Ask for the certificate, and say what came back.
+   *
+   *  certbot's own output is shown rather than a yes/no, because the one case
+   *  where this matters is a name whose DNS does not point here yet - and
+   *  "failed" tells nobody what to fix. The Sites page shows it the same way. */
+  async function issueCert(site) {
+    try {
+      const r = await api.post(`/sites/${site.id}/ssl`);
+      if (r.ok) {
+        ui.toast(`Certificate issued for ${site.domain}`);
+        load();
+        return true;
+      }
+      ui.modal({
+        title: `SSL for ${site.domain}`,
+        body: ui.el('div', {},
+          ui.el('p', { style: 'margin-top:0' },
+            `No certificate yet. ${site.domain} has to resolve to this server `
+            + 'before certbot can validate it - add an A record for it, then '
+            + 'try again. The website itself already works over http:// in the '
+            + 'meantime.'),
+          ui.el('pre', { class: 'pre-log' }, r.output || '(no output)'))
+      });
+    } catch (e) {
+      ui.toast(e.message, true);
+    }
+    load();
+    return false;
+  }
+
+  /* Giving an app a hostname - and, once it has one, showing what it is now.
+   *
+   *  A linked site is an ordinary site record, so what is worth putting in
+   *  front of the operator is only the three facts that differ: the address,
+   *  whether there is a certificate yet, and how to take the link away. */
+  function linkModal(c) {
+    const ports = String(c.ports || '').split(',')
+      .map((p) => p.trim().match(/^(\d+)->/))
+      .filter(Boolean)
+      .map((m) => Number(m[1]));
+
+    if (c.site) {
+      const s = c.site;
+      ui.modal({
+        title: `Website for ${c.name}`,
+        body: ui.el('div', {},
+          ui.el('p', { style: 'margin-top:0' }, 'This app is served at:'),
+          ui.el('p', {},
+            ui.el('a', { href: s.url, target: '_blank', rel: 'noopener' }, `${s.url} ↗`),
+            ' ',
+            s.ssl ? ui.badge('SSL', 'green') : ui.badge('no SSL yet', 'gray')),
+          ui.el('p', { class: 'text-dim' },
+            `${s.domain} forwards to port ${s.port} of ${c.name}.`),
+          ui.el('div', { class: 'modal-actions' },
+            s.ssl ? null : ui.el('button', {
+              class: 'btn btn-primary',
+              onclick: async (ev) => {
+                const btn = ev.target;
+                btn.disabled = true;
+                /* Re-enabled either way: certbot refusing is the case where the
+                 * operator most needs to press it again after adding the DNS
+                 * record, so a failed attempt must not leave it stuck. */
+                try { await issueCert(s); } finally { btn.disabled = false; }
+              }
+            }, '🔒 Get certificate'),
+            ui.el('button', {
+              class: 'btn btn-danger',
+              onclick: async () => {
+                if (!(await ui.confirmBox(
+                  `Unlink ${s.domain} from ${c.name}? The website stops `
+                  + 'serving this app, and its document root is removed.',
+                  { okText: 'Unlink' }))) return;
+                try {
+                  await api.del(`/docker/containers/${c.id}/link?deleteFiles=true`);
+                  ui.toast(`Unlinked ${s.domain}`);
+                  load();
+                } catch (e) { ui.toast(e.message, true); }
+              }
+            }, 'Unlink'))
+        )
+      });
+      return;
+    }
+
+    const domain = textInput('app.example.com');
+    const portSel = ui.el('select', {},
+      ...ports.map((p) => ui.el('option', { value: String(p) }, String(p))));
+
+    if (!ports.length) {
+      ui.modal({
+        title: `Website for ${c.name}`,
+        body: ui.el('div', {},
+          ui.el('p', { style: 'margin-top:0' },
+            `${c.name} publishes no ports, so there is nothing for a website to `
+            + 'forward to yet.'),
+          ui.el('p', { class: 'text-dim' },
+            'Add a port mapping in Settings first - a website can only reach '
+            + 'what the container exposes.'))
+      });
+      return;
+    }
+
+    const go = ui.el('button', { class: 'btn btn-primary' }, 'Link website');
+    const m = ui.modal({
+      title: `Website for ${c.name}`,
+      body: ui.el('div', {},
+        ui.el('p', { class: 'text-dim', style: 'margin-top:0' },
+          'Give the app a name: nginx serves it on the normal ports, with a '
+          + 'certificate, instead of a port number nobody can remember. The '
+          + 'app opens from its tile at this address afterwards.'),
+        field('Hostname', domain, 'A name that already resolves to this server, e.g. app.example.com.'),
+        field('Forward to', portSel, `Published by ${c.name}.`),
+        ui.el('div', { class: 'modal-actions' }, go))
+    });
+
+    go.onclick = async () => {
+      const host = domain.value.trim();
+      if (!host) { ui.toast('Enter a hostname', true); return; }
+      const done = busy(go, 'Linking…');
+      try {
+        const r = await api.post(`/docker/containers/${c.id}/link`, {
+          domain: host, port: portSel.value
+        });
+        ui.toast(`Linked ${host} to ${c.name}`);
+        m.close();
+        /* The address is meant to be used over https, so ask for the
+         * certificate as part of the same action rather than leaving a linked
+         * app that silently only works over http. A DNS record that is not
+         * there yet is reported inside issueCert, not swallowed. */
+        await issueCert(r.site);
+      } catch (e) {
+        ui.toast(e.message, true);
+      } finally {
+        done();
+      }
+    };
   }
 
   /* The "+" CasaOS puts at the end of the grid: it goes to the store, which is
