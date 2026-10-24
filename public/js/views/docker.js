@@ -909,6 +909,48 @@ window.DockerView = (() => {
     return i;
   }
 
+  /* ------------------------------------------------- server services -- */
+  /* Offered on every run form, including the Store's. A container starts out
+   * with no route to anything the host runs, so without this an app that wants
+   * a database has to ship its own - and one that wants PHP has to carry a PHP.
+   * The options are read from the server rather than assumed, so the PHP list
+   * is whatever is actually running here. */
+  function servicesBlock(state, s) {
+    const m = s.mariadb || {};
+
+    const dbBox = ui.el('input', { type: 'checkbox' });
+    dbBox.checked = !!state.mariadb;
+    dbBox.onchange = () => { state.mariadb = dbBox.checked; };
+
+    const phpSel = ui.el('select', {}, ui.el('option', { value: '' }, 'None'));
+    ((s.php && s.php.versions) || []).filter((v) => v.socket).forEach((v) => {
+      phpSel.appendChild(ui.el('option', { value: v.version },
+        `${v.version}${v.default ? ' (server default)' : ''}`));
+    });
+    phpSel.value = state.php || '';
+    phpSel.onchange = () => { state.php = phpSel.value; };
+
+    return ui.el('div', { style: 'border-top:1px solid var(--line);margin-top:12px;padding-top:10px' },
+      ui.el('div', { class: 'text-dim', style: 'font-weight:600;margin-bottom:8px' }, 'Server services'),
+      ui.el('label', { style: 'display:flex;gap:8px;align-items:flex-start' },
+        dbBox,
+        ui.el('div', {},
+          ui.el('div', {}, 'MariaDB — create a database for this app'),
+          ui.el('div', { class: 'text-dim', style: 'font-size:11.5px;margin-top:2px' },
+            m.configured
+              ? `This server's MariaDB answers on ${s.hostAlias}:${m.port}. `
+                + 'The app is given DB_NAME, DB_USER and DB_PASSWORD - and the MySQL '
+                + 'and WordPress spellings of them - so it installs itself instead of '
+                + 'asking for credentials it has no way to discover.'
+              : 'No bind-address setting was found in the MariaDB config, so this '
+                + 'cannot be offered.'))),
+      ui.el('label', { style: 'display:block;margin-top:10px' },
+        'PHP-FPM socket', phpSel,
+        ui.el('div', { class: 'text-dim', style: 'font-size:11.5px;margin-top:4px' },
+          'Mounts this server\'s PHP-FPM socket so PHP is served here rather than by '
+          + 'an app-local copy. Pick None if the image brings its own PHP.')));
+  }
+
   function runModal(preset) {
     const p = preset || {};
     const image = textInput('nginx:alpine', p.image || '');
@@ -923,6 +965,15 @@ window.DockerView = (() => {
       ...['unless-stopped', 'always', 'on-failure', 'no'].map((v) =>
         ui.el('option', { value: v }, v)));
     restart.value = p.restart || 'unless-stopped';
+
+    /* Fetched rather than assumed: which PHP versions are running is a
+     * property of the box, and offering a socket that is not there would
+     * silently become a directory at mount time. */
+    const svc = { mariadb: false, php: '' };
+    const svcHost = ui.el('div', {});
+    api.get('/docker/services')
+      .then((s) => { svcHost.appendChild(servicesBlock(svc, s)); })
+      .catch(() => { svcHost.remove(); });
 
     const start = ui.el('button', { class: 'btn btn-primary' }, 'Start container');
     const m = ui.modal({
@@ -940,6 +991,7 @@ window.DockerView = (() => {
         field('Volumes', volumes, 'Comma-separated /host:/container[:ro]. Absolute paths only.'),
         field('Environment', env, 'One KEY=value per line.'),
         field('Restart policy', restart),
+        svcHost,
         ui.el('div', { class: 'modal-actions' }, start)
       )
     });
@@ -961,8 +1013,14 @@ window.DockerView = (() => {
       try {
         const r = await api.post('/docker/containers', {
           image: image.value.trim(), name: name.value.trim(), command: command.value,
-          ports: ports.value, volumes: volumes.value, env: env.value, restart: restart.value
+          ports: ports.value, volumes: volumes.value, env: env.value, restart: restart.value,
+          services: (svc.mariadb || svc.php)
+            ? { mariadb: !!svc.mariadb, php: svc.php || undefined }
+            : undefined
         });
+        if (r.services && r.services.notes && r.services.notes.length) {
+          ui.toast(r.services.notes.join(' · '));
+        }
         ui.toast(`Started ${r.name || name.value}`);
         m.close();
         page = 'apps';
