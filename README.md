@@ -124,7 +124,7 @@ existing install, and a surprise major version is not a kindness. Run the
 | ⚙️ | **Services** | Full systemd control, curates the ~170 units down to the 15 that matter |
 | 🖥️ | **Servers** | Per-server configure / tweak / enable / disable for Nginx, Apache, OpenLiteSpeed |
 | 📁 | **Files** | Browser file manager, inline editor, **uploads with live per-file progress, speed and ETA** |
-| 🐳 | **Docker** | Containers and images: start, stop, logs, remove |
+| 🐳 | **Docker** | CasaOS-style desktop (wallpaper, clock, widgets, dock, app tiles, Store), containers and images, link a site to an app, and **give a container this server's MariaDB and PHP-FPM** |
 | ⏰ | **Cron** | Visual crontab editor plus WordPress cron events |
 | 🧱 | **Addons** | Redis, Varnish, webmail, mail, antivirus, certbot, Docker, cron, Node.js, Perl, FTP, phpMyAdmin, BIND9 |
 | 💻 | **Terminal** | Full web terminal (xterm.js + node-pty) |
