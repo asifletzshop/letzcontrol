@@ -222,6 +222,27 @@ app.use(express.static(path.join(__dirname, 'public'), {
 /* ---------------------------- API -------------------------------- */
 const { requireAuth, requireAdmin } = auth;
 app.use('/api/auth', auth.router);
+
+// Unauthenticated preview routes - <img> tags can't send auth headers
+const preview = require('./lib/preview');
+app.get('/api/preview-images/:domain', (req, res) => {
+  const domain = String(req.params.domain || '').toLowerCase();
+  const DOMAIN_RE = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i;
+  if (!DOMAIN_RE.test(domain)) return res.status(400).json({ error: 'Invalid domain name' });
+  const site = db.findOne('sites', (s) => s.domain === domain);
+  if (!site) return res.status(404).json({ error: 'Site not found' });
+  const file = preview.read(domain);
+  if (!file) return res.status(404).json({ error: 'No preview yet' });
+  res.setHeader('Content-Type', 'image/png');
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  res.sendFile(file);
+});
+
+app.get('/api/preview-status', (_req, res) => {
+  const c = preview.chrome();
+  res.json({ available: !!c, browser: c ? path.basename(c) : null });
+});
+
 app.use('/api/stats', requireAuth, stats.router);
 app.use('/api/services', requireAuth, services.router);
 app.use('/api/files', requireAuth, files.router);
