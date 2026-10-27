@@ -98,6 +98,22 @@ if (fs.existsSync(CONFIG_FILE)) {
       mysql: { ...defaults.mysql, ...(file.mysql || {}) },
       tls: { ...defaults.tls, ...(file.tls || {}) }
     };
+    /* A config.json that has no sessionSecret of its own still gets one from
+     * `defaults` above - and until now it was never written back, so the
+     * process signed its session cookies with a fresh random secret on every
+     * boot: every login died on the next restart, with nothing in the log to
+     * say why. This happens on any install whose config.json was created
+     * without one (the installer used to write {"port":2087} alone to honour
+     * --port, which also suppressed the first-run write below). Persist it
+     * now, once, so the secret is the same after a restart as before it. */
+    if (!file.sessionSecret) {
+      config.sessionSecret = crypto.randomBytes(32).toString('hex');
+      try {
+        fs.writeFileSync(CONFIG_FILE, JSON.stringify({ ...file, sessionSecret: config.sessionSecret }, null, 2));
+      } catch (e) {
+        console.error('[letzControl] could not persist sessionSecret to config.json:', e.message);
+      }
+    }
   } catch (e) {
     console.error('[letzControl] config.json is invalid JSON, using defaults:', e.message);
     config = defaults;

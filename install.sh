@@ -204,10 +204,16 @@ if [ -n "$PANEL_PORT" ]; then
   CUR=$(node -p "try{require('$INSTALL_DIR/config.json').port}catch(e){''}" 2>/dev/null || echo "")
   if [ "$CUR" != "$PANEL_PORT" ]; then
     node -e "
-      const fs=require('fs'), f='$INSTALL_DIR/config.json';
+      const fs=require('fs'), crypto=require('crypto'), f='$INSTALL_DIR/config.json';
       let c = {};
       try { c = JSON.parse(fs.readFileSync(f,'utf8')); } catch (e) {}
       c.port = $PANEL_PORT;
+      // config.js generates a random sessionSecret at load time, but persists
+      // it only when it writes config.json itself - which is the first run,
+      // with no file present. This block creates that file, so without this
+      // the secret would be regenerated on every restart: every session cookie
+      // would stop verifying and everyone would be logged out.
+      if (!c.sessionSecret) c.sessionSecret = crypto.randomBytes(32).toString('hex');
       fs.writeFileSync(f, JSON.stringify(c, null, 2));
     " || die "could not set the port in config.json"
     if [ -f config.json ]; then
@@ -217,6 +223,18 @@ if [ -n "$PANEL_PORT" ]; then
     fi
   fi
 fi
+
+# Where the panel will keep its data - asked of config.json, with the same
+# fallback the panel itself uses (config.js defaults dataDir to <dir>/data).
+CREDS_DIR=$(node -p "try{require('$INSTALL_DIR/config.json').dataDir||''}catch(e){''}" 2>/dev/null || echo "")
+[ -n "$CREDS_DIR" ] || CREDS_DIR="$INSTALL_DIR/data"
+# Whether the credentials file exists BEFORE this run boots the panel. It has
+# to be recorded here: with systemd the service below starts the panel, which
+# writes the file within seconds - so by the end of the script it exists on a
+# BRAND NEW install too, and checking only "does it exist now" reads every
+# fresh install as an upgrade and prints no password at all.
+CREDS_EXISTED_BEFORE=0
+[ -f "$CREDS_DIR/ADMIN_CREDENTIALS.txt" ] && CREDS_EXISTED_BEFORE=1
 
 # ------------------------------ systemd ---------------------------------
 # systemd being installed is not the same as systemd being PID 1 (containers,
@@ -325,27 +343,19 @@ echo
 echo "  Credentials:"
 
 # The panel writes its generated admin password on first start; surface it
-# rather than making the user go hunting for it. The file only appears once
-# the service is actually up, so wait for it (it may already exist on an
-# upgrade, which is exactly the case where nothing new is printed).
-# Ask the panel's own config for its data directory rather than assuming it
-# sits beside the code. The ||'' matters: config.json without a dataDir key
-# makes require().dataDir evaluate to undefined without throwing, so the catch
-# never runs and node -p prints the string "undefined" - which then becomes the
-# path and the credentials file is never found. That is the whole bug.
-CREDS_DIR=$(node -p "try{require('$INSTALL_DIR/config.json').dataDir||''}catch(e){''}" 2>/dev/null || echo "")
-[ -n "$CREDS_DIR" ] || CREDS_DIR="$INSTALL_DIR/data"
+# rather than making the user go hunting for it. CREDS_EXISTED_BEFORE (recorded
+# before the service was started above) is what separates "generated just now"
+# from "already there from an earlier install" - the file's presence at the END
+# proves nothing, because a fresh install's own boot creates it in seconds.
 CREDS="$CREDS_DIR/ADMIN_CREDENTIALS.txt"
-CREDS_WAS_NEW=0
-if [ ! -f "$CREDS" ]; then
-  CREDS_WAS_NEW=1
-  for _ in $(seq 1 20); do [ -f "$CREDS" ] && break; sleep 1; done
+if [ "$CREDS_EXISTED_BEFORE" = "0" ] && [ ! -f "$CREDS" ]; then
+  for _ in $(seq 1 30); do [ -f "$CREDS" ] && break; sleep 1; done
 fi
 
 if [ -f "$CREDS" ]; then
   USER_NAME=$(sed -n 's/^username: //p' "$CREDS" | head -1)
   USER_PASS=$(sed -n 's/^password: //p' "$CREDS" | head -1)
-  if [ "$CREDS_WAS_NEW" = "1" ]; then
+  if [ "$CREDS_EXISTED_BEFORE" = "0" ] && [ -n "$USER_PASS" ]; then
     printf '    username  \033[1;37m%s\033[0m\n' "$USER_NAME"
     printf '    password  \033[1;37m%s\033[0m\n' "$USER_PASS"
     echo
