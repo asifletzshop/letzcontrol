@@ -185,7 +185,9 @@ window.SitesView = (() => {
     const m = ui.modal({ title: `DNS: ${s.domain}`, body, wide: true });
 
     try {
-      const zones = await api.get('/dns/zones');
+      const zonesData = await api.get('/dns/zones');
+      const zones = zonesData.zones || [];
+      const serverIp = zonesData.serverIp;
       const zone = zones.find(z => z.domain === s.domain || s.domain.endsWith('.' + z.domain));
 
       if (!zone) {
@@ -208,8 +210,8 @@ window.SitesView = (() => {
       const tbody = recs.querySelector('tbody');
 
       const records = [
-        { type: 'A', name: '@', value: config.serverIp || 'YOUR_SERVER_IP', ttl: 3600 },
-        { type: 'A', name: 'www', value: config.serverIp || 'YOUR_SERVER_IP', ttl: 3600 },
+        { type: 'A', name: '@', value: serverIp || 'YOUR_SERVER_IP', ttl: 3600 },
+        { type: 'A', name: 'www', value: serverIp || 'YOUR_SERVER_IP', ttl: 3600 },
         { type: 'CNAME', name: 'mail', value: 'mail.' + zone.domain, ttl: 3600 },
         { type: 'CNAME', name: 'smtp', value: 'mail.' + zone.domain, ttl: 3600 },
         { type: 'CNAME', name: 'pop', value: 'mail.' + zone.domain, ttl: 3600 },
