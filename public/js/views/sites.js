@@ -1,23 +1,21 @@
 'use strict';
-/* Websites view: card grid with real previews, create, edit, SSL, toggle, delete */
+/* Websites view: card grid with actions, create, edit, SSL, toggle, delete */
 window.SitesView = (() => {
   const BACKENDS = ['nginx', 'apache', 'openlitespeed', 'node'];
   const NO_PHP = ['node'];
 
   async function load(root, me) {
-    const [{ sites }, { backends, ports }, php, usersData, fieldsData, pstatus] = await Promise.all([
+    const [{ sites }, { backends, ports }, php, usersData, fieldsData] = await Promise.all([
       api.get('/sites'),
       api.get('/sites/backends'),
       api.get('/php').catch(() => ({ versions: [], ols: [] })),
       me.role === 'admin' ? api.get('/users') : Promise.resolve({ users: [] }),
-      api.get('/sites/phpini/fields').catch(() => ({ fields: [] })),
-      api.get('/sites/previews/status').catch(() => ({ available: false }))
+      api.get('/sites/phpini/fields').catch(() => ({ fields: [] }))
     ]);
     const users = usersData.users;
     const iniFields = fieldsData.fields;
     const fpmVersions = php.versions || [];
     const olsVersions = php.ols || [];
-    const chrome = pstatus.available;
 
     const phpOptions = (backend) => {
       if (NO_PHP.includes(backend)) return [];
@@ -34,7 +32,6 @@ window.SitesView = (() => {
         ui.el('span', { class: 'sites-count' }, `${sites.length} site${sites.length !== 1 ? 's' : ''}`)
       ),
       ui.el('div', { class: 'toolbar' },
-        chrome ? ui.el('button', { class: 'btn btn-sm', onclick: () => refreshAllPreviews(root, me) }, '🔄 Refresh previews') : null,
         ui.el('button', { class: 'btn btn-primary', onclick: () => createModal(root, me, backends, ports, users, phpOptions) }, '+ Add Website')
       )
     );
@@ -58,46 +55,24 @@ window.SitesView = (() => {
     // Card grid
     const grid = ui.el('div', { class: 'sites-grid' });
     for (const s of sites) {
-      grid.appendChild(siteCard(root, me, s, backends, ports, phpOptions, users, iniFields, chrome));
+      grid.appendChild(siteCard(root, me, s, backends, ports, phpOptions, users, iniFields));
     }
     root.appendChild(grid);
   }
 
-  function siteCard(root, me, s, backends, ports, phpOptions, users, iniFields, chrome) {
-    const card = ui.el('div', { class: 'site-preview-card' });
-
-    // Preview image area
-    const previewBox = ui.el('div', { class: 'preview-box' },
-      ui.el('div', { class: 'preview-loading', style: chrome ? 'display:flex' : 'display:none' },
-        ui.el('span', { class: 'spinner' })
-      ),
-      ui.el('img', {
-        class: 'preview-img',
-        loading: 'lazy',
-        alt: s.domain,
-        style: 'display:none',
-        onload: function() { this.style.display = 'block'; this.previousElementSibling.style.display = 'none'; },
-        onerror: function() { this.style.display = 'none'; this.previousElementSibling.style.display = 'flex'; this.previousElementSibling.innerHTML = '⚠️'; }
-      })
-    );
-    // Set the preview URL (will 404 if none exists, image handles it)
-    if (chrome) {
-      previewBox.querySelector('img').src = `/api/preview-images/${s.domain}?t=${Date.now()}`;
-    } else {
-      previewBox.querySelector('.preview-loading').innerHTML = '🖼️';
-      previewBox.querySelector('.preview-loading').style.display = 'flex';
-    }
+  function siteCard(root, me, s, backends, ports, phpOptions, users, iniFields) {
+    const card = ui.el('div', { class: 'site-card' });
 
     // Domain bar
-    const domainBar = ui.el('div', { class: 'preview-domain-bar' },
-      ui.el('a', { href: `http://${s.domain}`, target: '_blank', rel: 'noopener', class: 'preview-domain' }, s.domain),
-      ui.el('a', { href: `http://${s.domain}`, target: '_blank', rel: 'noopener', class: 'preview-open', title: 'Open site' }, '↗')
+    const domainBar = ui.el('div', { class: 'site-domain-bar' },
+      ui.el('a', { href: `http://${s.domain}`, target: '_blank', rel: 'noopener', class: 'site-domain' }, s.domain),
+      ui.el('a', { href: `http://${s.domain}`, target: '_blank', rel: 'noopener', class: 'site-open', title: 'Open site' }, '↗')
     );
 
     // Status row
     const statusDot = ui.el('span', { class: 'dot ' + (s.enabled === false ? 'idle' : 'ok') });
     const statusText = s.enabled === false ? 'disabled' : 'active';
-    const statusBadges = ui.el('div', { class: 'preview-badges' },
+    const statusBadges = ui.el('div', { class: 'site-badges' },
       ui.badge(s.backend, s.backend === 'nginx' ? 'green' : s.backend === 'apache' ? 'yellow' : s.backend === 'node' ? 'gray' : 'blue'),
       s.ssl ? ui.badge('SSL', 'green') : null,
       s.enabled === false ? ui.badge('off', 'red') : null,
@@ -107,13 +82,13 @@ window.SitesView = (() => {
     // Disk & Traffic stats
     const diskMb = s.diskMb || 0;
     const trafficMb = s.trafficMb || 0;
-    const statsRow = ui.el('div', { class: 'preview-stats' },
+    const statsRow = ui.el('div', { class: 'site-stats' },
       ui.el('span', { title: 'Disk space used' }, '💾 ' + (diskMb >= 1024 ? (diskMb / 1024).toFixed(1) + ' GB' : diskMb + ' MB')),
       ui.el('span', { title: 'Traffic this month' }, '📊 ' + (trafficMb >= 1024 ? (trafficMb / 1024).toFixed(1) + ' GB' : trafficMb + ' MB'))
     );
 
     // PHP switcher (inline)
-    const phpSel = ui.el('select', { class: 'preview-php-select' });
+    const phpSel = ui.el('select', { class: 'site-php-select' });
     phpSel.appendChild(ui.el('option', { value: '' }, 'static'));
     const opts = phpOptions(s.backend);
     for (const v of opts) phpSel.appendChild(ui.el('option', { value: v.version }, v.version));
@@ -130,7 +105,7 @@ window.SitesView = (() => {
     };
 
     // Action buttons
-    const actions = ui.el('div', { class: 'preview-actions' },
+    const actions = ui.el('div', { class: 'site-actions' },
       ui.el('button', { class: 'btn btn-sm', onclick: () => editModal(root, me, s, backends, ports, phpOptions, users) }, '⚙️'),
       ui.el('button', { class: 'btn btn-sm', onclick: () => {
         location.hash = '#/files?path=' + encodeURIComponent((s.docroot || '') + '/public');
@@ -156,30 +131,20 @@ window.SitesView = (() => {
       }, title: 'Delete' }, '🗑️')
     );
 
-    card.appendChild(previewBox);
     card.appendChild(domainBar);
-    card.appendChild(ui.el('div', { class: 'preview-status' },
-      ui.el('div', { class: 'preview-status-left' }, statusDot, statusText, statusBadges),
-      ui.el('div', { class: 'preview-php' }, phpSel)
+    card.appendChild(ui.el('div', { class: 'site-status' },
+      ui.el('div', { class: 'site-status-left' }, statusDot, statusText, statusBadges),
+      ui.el('div', { class: 'site-php' }, phpSel)
     ));
     card.appendChild(statsRow);
     card.appendChild(actions);
 
     // Owner (admin only)
     if (me.role === 'admin' && s.owner) {
-      card.appendChild(ui.el('div', { class: 'preview-owner' }, '👤 ' + s.owner));
+      card.appendChild(ui.el('div', { class: 'site-owner' }, '👤 ' + s.owner));
     }
 
     return card;
-  }
-
-  async function refreshAllPreviews(root, me) {
-    ui.toast('Refreshing previews...', false);
-    try {
-      const r = await api.post('/sites/previews/refresh', {});
-      ui.toast(`Previews updated (${r.taken} taken, ${r.failed} failed)`);
-      load(root, me);
-    } catch (e) { ui.toast(e.message, true); }
   }
 
   /* ------------------------------------------------------------------ */
@@ -220,7 +185,6 @@ window.SitesView = (() => {
     const m = ui.modal({ title: `DNS: ${s.domain}`, body, wide: true });
 
     try {
-      // Get all DNS zones and find one matching this domain
       const zones = await api.get('/dns/zones');
       const zone = zones.find(z => z.domain === s.domain || s.domain.endsWith('.' + z.domain));
 
@@ -231,7 +195,6 @@ window.SitesView = (() => {
         return;
       }
 
-      // Show zone info and records
       body.innerHTML = '';
       body.appendChild(ui.el('h4', {}, `Zone: ${zone.domain}`));
       body.appendChild(ui.el('p', { class: 'text-dim' }, `NS records: ${zone.ns.join(', ')}`));
@@ -244,7 +207,6 @@ window.SitesView = (() => {
       );
       const tbody = recs.querySelector('tbody');
 
-      // Add common records for this site
       const records = [
         { type: 'A', name: '@', value: config.serverIp || 'YOUR_SERVER_IP', ttl: 3600 },
         { type: 'A', name: 'www', value: config.serverIp || 'YOUR_SERVER_IP', ttl: 3600 },
@@ -285,7 +247,6 @@ window.SitesView = (() => {
 
       body.innerHTML = '';
       if (!wp.installed) {
-        // Not installed - show install button
         body.appendChild(ui.el('p', {}, 'WordPress is not installed on this site.'));
         const installBtn = ui.el('button', { class: 'btn btn-primary' }, 'Install WordPress');
         installBtn.onclick = async () => {
@@ -302,15 +263,13 @@ window.SitesView = (() => {
         return;
       }
 
-      // Show WordPress status
       body.appendChild(ui.el('h4', {}, `WordPress ${wp.version}`));
-      body.appendChild(ui.el('div', { class: 'preview-badges', style: 'margin-bottom:16px' },
+      body.appendChild(ui.el('div', { class: 'site-badges', style: 'margin-bottom:16px' },
         ui.badge(wp.siteTitle || 'Untitled', 'blue'),
         ui.badge(wp.phpVersion || 'PHP ?', 'green'),
         wp.updateAvailable ? ui.badge('Update available', 'yellow') : ui.badge('Up to date', 'green')
       ));
 
-      // Quick actions
       const actionsRow = ui.el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px' });
 
       actionsRow.appendChild(ui.el('button', { class: 'btn btn-sm', onclick: async () => {
@@ -336,11 +295,10 @@ window.SitesView = (() => {
 
       body.appendChild(actionsRow);
 
-      // Site health
       if (wp.health) {
         const healthEl = ui.el('div', { class: 'card' },
           ui.el('h4', {}, 'Site Health'),
-          ui.el('div', { class: 'preview-badges' },
+          ui.el('div', { class: 'site-badges' },
             ui.badge(`Health score: ${wp.health.score}/100`, wp.health.score >= 80 ? 'green' : wp.health.score >= 50 ? 'yellow' : 'red')
           )
         );
