@@ -82,7 +82,7 @@ window.SitesView = (() => {
     );
     // Set the preview URL (will 404 if none exists, image handles it)
     if (chrome) {
-      previewBox.querySelector('img').src = `/api/preview-images/${s.domain}`;
+      previewBox.querySelector('img').src = `/api/preview-images/${s.domain}?t=${Date.now()}`;
     } else {
       previewBox.querySelector('.preview-loading').innerHTML = '🖼️';
       previewBox.querySelector('.preview-loading').style.display = 'flex';
