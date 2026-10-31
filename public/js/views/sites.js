@@ -199,7 +199,8 @@ window.SitesView = (() => {
 
       body.innerHTML = '';
       body.appendChild(ui.el('h4', {}, `Zone: ${zone.domain}`));
-      body.appendChild(ui.el('p', { class: 'text-dim' }, `NS records: ${zone.ns.join(', ')}`));
+      const nsRecords = (zone.records || []).filter(r => r.type === 'NS').map(r => r.value).join(', ');
+      body.appendChild(ui.el('p', { class: 'text-dim' }, `NS records: ${nsRecords || 'ns1.' + zone.domain}`));
 
       const recs = ui.el('table', { class: 'table' },
         ui.el('thead', {}, ui.el('tr', {},
