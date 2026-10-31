@@ -1181,14 +1181,72 @@ input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 15
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
 }
 
-.site-preview-card {
+.site-card {
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: var(--radius); overflow: hidden;
   transition: transform .18s, border-color .18s, box-shadow .18s;
 }
-.site-preview-card:hover {
+.site-card:hover {
   transform: translateY(-3px); border-color: var(--border-strong);
   box-shadow: var(--shadow-2);
+}
+
+.site-domain-bar {
+  display: flex; align-items: center; padding: 12px 14px;
+  background: var(--bg-elev); border-bottom: 1px solid var(--border);
+}
+.site-domain {
+  font-weight: 600; font-size: 14px; color: var(--text);
+  text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1;
+}
+.site-domain:hover { color: var(--accent); }
+.site-open {
+  color: var(--text-dim); font-size: 14px; text-decoration: none; margin-left: 8px;
+  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+  border-radius: 6px; transition: all .15s;
+}
+.site-open:hover { color: var(--accent); background: var(--bg); }
+
+.site-status {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; gap: 10px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+}
+.site-status-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.site-badges { display: flex; gap: 5px; flex-wrap: wrap; }
+.site-badges .badge { font-size: 10px; padding: 2px 6px; }
+
+.site-php { display: flex; align-items: center; }
+.site-php-select {
+  background: var(--bg); border: 1px solid var(--border);
+  color: var(--text); font-size: 11px; padding: 3px 6px; border-radius: 6px;
+  cursor: pointer;
+}
+.site-php-select:hover { border-color: var(--border-strong); }
+
+.site-stats {
+  display: flex; gap: 16px; padding: 8px 14px;
+  font-size: 12px; color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+.site-stats span { display: flex; align-items: center; gap: 4px; }
+
+.site-actions {
+  display: flex; gap: 6px; padding: 10px 14px 12px;
+  flex-wrap: wrap;
+}
+.site-actions .btn {
+  flex: 0 0 auto; min-width: 32px; height: 32px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0 8px; font-size: 13px; border-radius: 6px;
+  transition: all .15s;
+}
+.site-actions .btn:hover { transform: translateY(-1px); }
+
+.site-owner {
+  padding: 6px 14px 10px; font-size: 11px; color: var(--text-dim);
+  border-top: 1px solid var(--border);
 }
 
 .preview-box {
