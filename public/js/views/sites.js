@@ -208,11 +208,14 @@ window.SitesView = (() => {
   }
 
   async function dnsModal(root, me, s) {
-    const loading = ui.el('div', { style: 'text-align:center;padding:20px' }, ui.el('span', { class: 'spinner' }), ' Loading DNS...');
-    const body = ui.el('div', {}, loading);
+    const body = ui.el('div', {});
+    // DNS content lives in its own container so it can be cleared/rebuild
+    // without touching the tool sections above it.
+    const dnsContent = ui.el('div', { style: 'margin-top:16px' },
+      ui.el('span', { class: 'spinner' }), ' Loading DNS...');
 
     // SSL/403 Fix Tool section (always visible)
-    body.appendChild(ui.el('div', { style: 'margin-bottom:20px; padding:12px; background:var(--bg-elev); border-radius:6px; border-left:4px solid var(--accent)' },
+    body.appendChild(ui.el('div', { style: 'margin-bottom:12px; padding:12px; background:var(--bg-elev); border-radius:6px; border-left:4px solid var(--accent)' },
       ui.el('div', { style: 'font-weight:600; margin-bottom:8px; color:var(--accent)' }, '🔧 SSL/403 Fix Tool'),
       ui.el('div', { style: 'font-size:13px; color:var(--text-dim); margin-bottom:8px' }, 'Check and fix common SSL certificate and 403 access issues'),
       ui.el('div', { id: 'ssl-status', style: 'margin-top:8px; font-size:12px' }, 'Ready'),
@@ -226,6 +229,13 @@ window.SitesView = (() => {
       } }, '🔧 Fix SSL/403')
     ));
 
+    // Mail Relay status section (always visible)
+    body.appendChild(ui.el('div', { style: 'padding:12px; background:var(--bg-elev); border-radius:6px; border-left:4px solid var(--accent)' },
+      ui.el('div', { style: 'font-weight:600; margin-bottom:8px; color:var(--accent)' }, '📧 Mail Relay'),
+      ui.el('div', { style: 'font-size:13px; color:var(--text-dim)' }, 'Outbound email is relayed through VPS2 (93.115.10.215:3000) because port 25 is blocked on this server.')
+    ));
+
+    body.appendChild(dnsContent);
     const m = ui.modal({ title: `DNS: ${s.domain}`, body, wide: true });
 
     try {
@@ -235,16 +245,16 @@ window.SitesView = (() => {
       const zone = zones.find(z => z.domain === s.domain || s.domain.endsWith('.' + z.domain));
 
       if (!zone) {
-        body.innerHTML = '';
-        body.appendChild(ui.el('p', {}, 'No DNS zone found for this domain.'));
-        body.appendChild(ui.el('p', { class: 'text-dim' }, 'Add a DNS zone in the DNS section to manage records.'));
+        dnsContent.innerHTML = '';
+        dnsContent.appendChild(ui.el('p', {}, 'No DNS zone found for this domain.'));
+        dnsContent.appendChild(ui.el('p', { class: 'text-dim' }, 'Add a DNS zone in the DNS section to manage records.'));
         return;
       }
 
-      body.innerHTML = '';
-      body.appendChild(ui.el('h4', {}, `Zone: ${zone.domain}`));
+      dnsContent.innerHTML = '';
+      dnsContent.appendChild(ui.el('h4', {}, `Zone: ${zone.domain}`));
       const nsRecords = (zone.records || []).filter(r => r.type === 'NS').map(r => r.value).join(', ');
-      body.appendChild(ui.el('p', { class: 'text-dim' }, `NS records: ${nsRecords || 'ns1.' + zone.domain}`));
+      dnsContent.appendChild(ui.el('p', { class: 'text-dim' }, `NS records: ${nsRecords || 'ns1.' + zone.domain}`));
 
       const recs = ui.el('table', { class: 'table' },
         ui.el('thead', {}, ui.el('tr', {},
@@ -272,11 +282,11 @@ window.SitesView = (() => {
           ui.el('td', {}, r.ttl.toString())
         ));
       }
-      body.appendChild(recs);
+      dnsContent.appendChild(recs);
 
     } catch (e) {
-      body.innerHTML = '';
-      body.appendChild(ui.el('p', { style: 'color:var(--danger)' }, e.message));
+      dnsContent.innerHTML = '';
+      dnsContent.appendChild(ui.el('p', { style: 'color:var(--danger)' }, e.message));
     }
   }
 
