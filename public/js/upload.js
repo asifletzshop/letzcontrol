@@ -171,7 +171,6 @@ window.UploadCentre = (() => {
     while (active < POOL && pending.length) {
       const rec = pending.shift();
       if (rec.state === 'cancel') continue;
-      rec.row.classList.add('cancelled');
       start(rec);
     }
   }
