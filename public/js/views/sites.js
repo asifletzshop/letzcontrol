@@ -229,12 +229,6 @@ window.SitesView = (() => {
       } }, '🔧 Fix SSL/403')
     ));
 
-    // Mail Relay status section (always visible)
-    body.appendChild(ui.el('div', { style: 'padding:12px; background:var(--bg-elev); border-radius:6px; border-left:4px solid var(--accent)' },
-      ui.el('div', { style: 'font-weight:600; margin-bottom:8px; color:var(--accent)' }, '📧 Mail Relay'),
-      ui.el('div', { style: 'font-size:13px; color:var(--text-dim)' }, 'Outbound email is relayed through VPS2 (93.115.10.215:3000) because port 25 is blocked on this server.')
-    ));
-
     body.appendChild(dnsContent);
     const m = ui.modal({ title: `DNS: ${s.domain}`, body, wide: true });
 

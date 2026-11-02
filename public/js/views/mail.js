@@ -198,7 +198,15 @@ window.MailView = (() => {
         ui.el('p', { class: 'text-dim', style: 'font-size:12px;margin:10px 0 0' },
           'Use the full address (user@domain) as the username. The password is the one set when the mailbox was created.'));
 
+      const relay = ui.el('div', { class: 'card', style: 'border-left:4px solid var(--accent)' },
+        ui.el('h3', {}, '📧 Mail Relay'),
+        ui.el('p', { class: 'text-dim', style: 'font-size:13px;margin:0' },
+          'Outbound email is relayed through VPS2 (93.115.10.215:3000) because port 25 is blocked on this server by the provider.'),
+        ui.el('p', { class: 'text-dim', style: 'font-size:12px;margin:8px 0 0' },
+          'The relay accepts connections only from this server (66.151.35.55), so messages are delivered with normal anti-spam handling.'));
+
       box.appendChild(ui.el('div', { class: 'ops-grid', style: 'margin-bottom:16px' }, health, client));
+      box.appendChild(relay);
       if (queueCount) box.appendChild(queueCard(root, me, status.queue));
       dnsCard(box, me, sites, status);
       return box;
