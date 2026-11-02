@@ -179,6 +179,19 @@ window.SitesView = (() => {
   /* ------------------------------------------------------------------ */
   /* DNS modal - show DNS records / manage zone                        */
   /* ------------------------------------------------------------------ */
+  async function checkMailRelayStatus(domain) {
+    try {
+      const r = await api.get('/sites/' + encodeURIComponent(domain));
+      const site = r.site;
+      // Check if this site is configured to relay through VPS2
+      // (simplified check - in production, this would verify the actual relay configuration)
+      const isRelaying = site.phpIni && Object.keys(site.phpIni).length > 0; // placeholder
+      return { enabled: isRelaying, domain };
+    } catch (e) {
+      return { enabled: false, domain };
+    }
+  }
+
   async function dnsModal(root, me, s) {
     const loading = ui.el('div', { style: 'text-align:center;padding:20px' }, ui.el('span', { class: 'spinner' }), ' Loading DNS...');
     const body = ui.el('div', {}, loading);
