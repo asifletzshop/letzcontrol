@@ -192,67 +192,120 @@ window.SitesView = (() => {
     }
   }
 
-  async function dnsModal(root, me, s) {
-    const loading = ui.el('div', { style: 'text-align:center;padding:20px' }, ui.el('span', { class: 'spinner' }), ' Loading DNS...');
-    const body = ui.el('div', {}, loading);
-
-    const m = ui.modal({ title: `DNS: ${s.domain}`, body, wide: true });
-
+  /* ------------------------------------------------------------------ */
+  /* SSL/403 Fix Tool - fix common SSL and 403 issues                         */
+  /* ------------------------------------------------------------------ */
+  async function checkSslIssues(domain) {
     try {
-      const zonesData = await api.get('/dns/zones');
-      const zones = zonesData.zones || [];
-      const serverIp = zonesData.serverIp;
-      const zone = zones.find(z => z.domain === s.domain || s.domain.endsWith('.' + z.domain));
-
-      if (!zone) {
-        body.innerHTML = '';
-        body.appendChild(ui.el('p', {}, 'No DNS zone found for this domain.'));
-        body.appendChild(ui.el('p', { class: 'text-dim' }, 'Add a DNS zone in the DNS section to manage records.'));
-        return;
-      }
-
-      body.innerHTML = '';
-      body.appendChild(ui.el('h4', {}, `Zone: ${zone.domain}`));
-      const nsRecords = (zone.records || []).filter(r => r.type === 'NS').map(r => r.value).join(', ');
-      body.appendChild(ui.el('p', { class: 'text-dim' }, `NS records: ${nsRecords || 'ns1.' + zone.domain}`));
-
-      const recs = ui.el('table', { class: 'table' },
-        ui.el('thead', {}, ui.el('tr', {},
-          ui.el('th', {}, 'Type'), ui.el('th', {}, 'Name'), ui.el('th', {}, 'Value'), ui.el('th', {}, 'TTL')
-        )),
-        ui.el('tbody', {})
-      );
-      const tbody = recs.querySelector('tbody');
-
-      const records = [
-        { type: 'A', name: '@', value: serverIp || 'YOUR_SERVER_IP', ttl: 3600 },
-        { type: 'A', name: 'www', value: serverIp || 'YOUR_SERVER_IP', ttl: 3600 },
-        { type: 'CNAME', name: 'mail', value: 'mail.' + zone.domain, ttl: 3600 },
-        { type: 'CNAME', name: 'smtp', value: 'mail.' + zone.domain, ttl: 3600 },
-        { type: 'CNAME', name: 'pop', value: 'mail.' + zone.domain, ttl: 3600 },
-        { type: 'CNAME', name: 'imap', value: 'mail.' + zone.domain, ttl: 3600 },
-        { type: 'TXT', name: '@', value: 'v=spf1 a mx ~all', ttl: 3600 },
-      ];
-
-      for (const r of records) {
-        tbody.appendChild(ui.el('tr', {},
-          ui.el('td', { class: 'badge' }, r.type),
-          ui.el('td', {}, r.name),
-          ui.el('td', { style: 'word-break:break-all' }, r.value),
-          ui.el('td', {}, r.ttl.toString())
-        ));
-      }
-      body.appendChild(recs);
-
+      // Check if SSL certificate exists
+      const certCheck = await api.get('/api/check-ssl/' + encodeURIComponent(domain)).catch(() => ({ ok: false }));
+      // Get site configuration
+      const siteCheck = await api.get('/sites/' + encodeURIComponent(domain)).catch(() => ({ site: null }));
+      
+      const issues = [];
+      if (!certCheck.ok) issues.push('SSL certificate missing or invalid');
+      if (siteCheck.site && !siteCheck.site.ssl) issues.push('SSL not enabled');
+      if (siteCheck.site && siteCheck.site.ssl) issues.push('SSL enabled but may have configuration issues');
+      
+      return {
+        hasIssues: issues.length > 0,
+        issues: issues,
+        domain: domain
+      };
     } catch (e) {
-      body.innerHTML = '';
-      body.appendChild(ui.el('p', { style: 'color:var(--danger)' }, e.message));
+      return {
+        hasIssues: true,
+        issues: ['Unable to check SSL configuration'],
+        domain: domain
+      };
+    }
+  }
+
+  async function fixSslIssues(domain) {
+    ui.toast('Fixing SSL/403 issues...', false);
+    try {
+      const r = await api.post('/api/fix-ssl', { domain: domain });
+      ui.toast('SSL/403 issues fixed!', true);
+      return { ok: true, message: r.message || 'Issues resolved' };
+    } catch (e) {
+      ui.toast(e.message, true);
+      return { ok: false, error: e.message };
     }
   }
 
   /* ------------------------------------------------------------------ */
-  /* WordPress modal - status, install, manage                          */
+  /* SSL/403 Fix Tool - check and fix SSL certificates and 403 issues */
   /* ------------------------------------------------------------------ */
+  async function checkSslIssues(domain) {
+    try {
+      // Check if SSL certificate exists
+      const certCheck = await api.get('/api/check-ssl/' + encodeURIComponent(domain)).catch(() => ({ ok: false }));
+      // Get site configuration
+      const siteCheck = await api.get('/sites/' + encodeURIComponent(domain)).catch(() => ({ site: null }));
+      
+      const issues = [];
+      if (!certCheck.ok) issues.push('SSL certificate missing or invalid');
+      if (siteCheck.site && !siteCheck.site.ssl) issues.push('SSL not enabled');
+      if (siteCheck.site && siteCheck.site.ssl) issues.push('SSL enabled but may have configuration issues');
+      
+      return {
+        hasIssues: issues.length > 0,
+        issues: issues,
+        domain: domain
+      };
+    } catch (e) {
+      return {
+        hasIssues: true,
+        issues: ['Unable to check SSL configuration'],
+        domain: domain
+      };
+    }
+  }
+
+  async function fixSslIssues(domain) {
+    ui.toast('Fixing SSL/403 issues...', false);
+    try {
+      const r = await api.post('/api/fix-ssl', { domain: domain });
+      ui.toast('SSL/403 issues fixed!', true);
+      return { ok: true, message: r.message || 'Issues resolved' };
+    } catch (e) {
+      ui.toast(e.message, true);
+      return { ok: false, error: e.message };
+    }
+  }
+
+  async function dnsModal(root, me, s) {
+    const loading = ui.el('div', { style: 'text-align:center;padding:20px' }, ui.el('span', { class: 'spinner' }), ' Loading DNS...');
+    const body = ui.el('div', {}, loading);
+
+    // SSL/403 Fix Tool Section
+    const sslStatus = ui.el('div', { style: 'margin-bottom:20px; padding:12px; background: var(--bg-elev); border-radius:6px; border-left:4px solid var(--accent);' },
+      ui.el('div', { style: 'font-weight:600; margin-bottom:8px; color: var(--accent)' }, '🔧 SSL/403 Fix Tool'),
+      ui.el('div', { style: 'font-size:13px; color: var(--text-dim); margin-bottom:8px' }, 'Check and fix common SSL certificates and 403 access issues'),
+      ui.el('div', { id: 'ssl-status', style: 'margin-top:8px; font-size:12px' }, 'Checking...')
+    );
+    body.appendChild(sslStatus);
+
+    const fixBtn = ui.el('button', { 
+      class: 'btn btn-sm', 
+      onclick: async () => {
+        const statusEl = body.querySelector('#ssl-status');
+        if (statusEl) statusEl.textContent = 'Fixing...';
+        try {
+          const result = await fixSslIssues(s.domain);
+          statusEl.textContent = result.ok ? '✅ Fixed - ' + result.message : '❌ Error: ' + result.error;
+          statusEl.style.color = result.ok ? 'var(--accent)' : 'var(--danger)';
+        } catch (e) {
+          statusEl.textContent = '❌ Error: ' + e.message;
+          statusEl.style.color = 'var(--danger)';
+        }
+      }
+    }, '🔧 Fix SSL/403');
+    const statusContainer = ui.el('div', { style: 'margin-top:8px; display:flex; gap:8px' });
+    statusContainer.append(fixBtn);
+    body.appendChild(statusContainer);
+
+    const m = ui.modal({ title: `DNS: ${s.domain}`, body, wide: true });
   async function wpModal(root, me, s) {
     const loading = ui.el('div', { style: 'text-align:center;padding:20px' }, ui.el('span', { class: 'spinner' }), ' Checking WordPress...');
     const body = ui.el('div', {}, loading);
