@@ -189,14 +189,13 @@ window.MailView = (() => {
       const client = ui.el('div', { class: 'card' },
         ui.el('h3', {}, 'Mail client settings'),
         ui.el('div', { class: 'client-grid' },
-          clientRow('IMAP (SSL)', `mail.${status.serverIp}`, '993', 'username = the full address'),
           clientRow('IMAP (STARTTLS)', `mail.${status.serverIp}`, '143', 'username = the full address'),
-          clientRow('SMTP (SSL)', `mail.${status.serverIp}`, '465', 'same username and password'),
-          clientRow('SMTP (STARTTLS)', `mail.${status.serverIp}`, '587', 'same username and password'),
-          clientRow('POP3 (SSL)', `mail.${status.serverIp}`, '995', 'username = the full address')
+          clientRow('SMTP (STARTTLS)', `mail.${status.serverIp}`, '587', 'same username and password')
         ),
         ui.el('p', { class: 'text-dim', style: 'font-size:12px;margin:10px 0 0' },
-          'Use the full address (user@domain) as the username. The password is the one set when the mailbox was created.'));
+          'Use the full address (user@domain) as the username. The password is the one set when the mailbox was created.'),
+        ui.el('p', { class: 'text-dim', style: 'font-size:12px;margin:6px 0 0;color:var(--warn)' },
+          'The provider blocks ports 993 (IMAPS), 465 (SMTPS) and 995 (POP3S) — use STARTTLS on 143/587 instead.'));
 
       const relay = ui.el('div', { class: 'card', style: 'border-left:4px solid var(--accent)' },
         ui.el('h3', {}, '📧 Mail Relay'),
