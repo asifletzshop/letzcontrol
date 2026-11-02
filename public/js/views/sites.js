@@ -120,6 +120,7 @@ window.SitesView = (() => {
           load(root, me);
         } catch (e) { ui.toast(e.message, true); }
       }, title: 'SSL' }, '🔒'),
+      ui.el('button', { class: 'btn btn-sm', onclick: () => phpIniModal(root, me, s, iniFields), title: 'PHP Settings' }, '⚙️PHP'),
       ui.el('button', { class: 'btn btn-sm', onclick: async () => {
         try { await api.post(`/sites/${s.id}/toggle`); load(root, me); }
         catch (e) { ui.toast(e.message, true); }
@@ -312,6 +313,107 @@ window.SitesView = (() => {
       body.innerHTML = '';
       body.appendChild(ui.el('p', { style: 'color:var(--danger)' }, e.message));
     }
+  }
+
+  async function phpIniModal(root, me, s, iniFields) {
+    const fields = iniFields || [];
+    if (!fields.length) {
+      try {
+        const f = await api.get('/sites/phpini/fields');
+        fields = f.fields || [];
+      } catch (e) { ui.toast(e.message, true); return; }
+    }
+    if (!fields.length) return ui.toast('PHP ini fields unavailable', true);
+
+    const body = ui.el('div', {});
+    const inputs = {};
+    let currentGroup = null;
+    let groupWrap = null;
+    for (const f of fields) {
+      if (f.group && f.group !== currentGroup) {
+        currentGroup = f.group;
+        groupWrap = ui.el('div', { style: 'margin-top:14px' });
+        groupWrap.appendChild(ui.el('div', { style: 'font-weight:600;color:var(--accent);margin-bottom:8px;font-size:13px' }, f.group));
+        body.appendChild(groupWrap);
+      }
+      if (!groupWrap) {
+        groupWrap = ui.el('div', { style: 'margin-top:14px' });
+        body.appendChild(groupWrap);
+      }
+      let input;
+      if (f.type === 'bool') {
+        input = ui.el('select', {});
+        input.appendChild(ui.el('option', { value: '' }, 'default'));
+        input.appendChild(ui.el('option', { value: '1' }, 'On'));
+        input.appendChild(ui.el('option', { value: '0' }, 'Off'));
+      } else if (f.type === 'select') {
+        input = ui.el('select', {});
+        for (const [v, lbl] of Object.entries(f.options || {})) {
+          input.appendChild(ui.el('option', { value: v }, lbl));
+        }
+      } else {
+        input = ui.el('input', { type: f.type === 'number' ? 'number' : 'text', placeholder: f.placeholder || '' });
+      }
+      inputs[f.key] = input;
+      const lbl = ui.el('label', {}, f.label, input);
+      if (f.hint) lbl.appendChild(ui.el('span', { class: 'text-dim', style: 'display:block;font-size:12px;margin-top:2px' }, f.hint));
+      groupWrap.appendChild(lbl);
+    }
+
+    const preview = ui.el('pre', { class: 'pre-log', style: 'margin-top:6px;max-height:130px' });
+    const renderPreview = () => {
+      const lines = Object.entries(inputs)
+        .map(([k, el]) => [k, el.value.trim()])
+        .filter(([, v]) => v !== '')
+        .map(([k, v]) => `${k} = ${v}`);
+      preview.textContent = lines.length ? lines.join('\n') : '# no overrides - PHP defaults apply';
+    };
+    body.addEventListener('input', renderPreview);
+    body.addEventListener('change', renderPreview);
+    body.appendChild(ui.el('div', { style: 'font-weight:600;color:var(--accent);margin-top:14px;font-size:13px' }, 'Preview (writes on save)'));
+    body.appendChild(preview);
+
+    const actions = ui.el('div', { class: 'modal-actions' });
+    const cancel = ui.el('button', { class: 'btn' }, 'Cancel');
+    const clear = ui.el('button', { class: 'btn' }, 'Clear all');
+    const save = ui.el('button', { class: 'btn btn-primary' }, 'Save PHP settings');
+    save.disabled = true;
+    actions.append(cancel, clear, save);
+    body.appendChild(actions);
+
+    const m = ui.modal({ title: `PHP Settings: ${s.domain}`, body, wide: true });
+    cancel.onclick = m.close;
+    clear.onclick = () => {
+      for (const el of Object.values(inputs)) el.value = '';
+      renderPreview();
+    };
+
+    // Load current values from site.phpIni
+    const v = s.phpIni || {};
+    for (const [k, el] of Object.entries(inputs)) {
+      const val = v[k] || '';
+      if (el.tagName === 'SELECT' && val && ![...el.options].some((o) => o.value === val)) {
+        el.appendChild(ui.el('option', { value: val }, `${val} (current)`));
+      }
+      el.value = val;
+    }
+    save.disabled = false;
+    renderPreview();
+
+    save.onclick = async () => {
+      const settings = {};
+      for (const [k, el] of Object.entries(inputs)) settings[k] = el.value.trim();
+      save.disabled = true;
+      try {
+        const r = await api.post(`/sites/${s.id}/phpini`, { settings });
+        m.close();
+        ui.toast('PHP settings saved');
+        load(root, me);
+      } catch (e) {
+        ui.toast(e.message, true);
+        save.disabled = false;
+      }
+    };
   }
 
   function createModal(root, me, backends, ports, users, phpOptions) {
