@@ -200,5 +200,7 @@ window.UpdatesView = (() => {
     }).catch(() => { /* optional */ });
   }
 
-  return { render, banner };
+  return { render, banner,
+    destroy() { clearInterval(pollTimer); pollTimer = null; }
+  };
 })();
